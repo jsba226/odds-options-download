@@ -4,7 +4,7 @@
  * Author: Matthew Denninghoff.
  * 
  * This class gives simple, standard way to print mysql query results as
- * a html table.
+ * a html table or as CSV text.
  * 
  * Copyright 2015 Fishback Research and Management.
  *
@@ -21,12 +21,32 @@
  * limitations under the License.
  */
 
+// Charset to output with the CSV header.
+const CSV_CHARSET = 'utf-8';
+const CSV_DELIMITER = ',';
+const CSV_ENCLOSURE = '"';
+
 class MysqlResultTable
 {
-    
+    /**
+     * This holds the mysql query result object.
+     *
+     * @var mixed
+     */
     protected $query_result;
     
+    /**
+     * Number of rows in a good result or 0.
+     *
+     * @var int
+     */
     protected $num_rows;
+    
+    /**
+     * Number of columns in a good result or 0.
+     *
+     * @var int
+     */
     protected $num_cols;
     
     /**
@@ -51,7 +71,18 @@ class MysqlResultTable
     // Swap values in the query result with these. Not every index is set.
     protected $column_value_map;
     
+    /**
+     * If the query failed, this holds the string result of mysql_error().
+     *
+     * @var string
+     */
     protected $error_message;
+    
+    /**
+     * Holds the raw SQL query string that was used.
+     *
+     * @var string
+     */
     public $query_string;
     
     // String to print inside the table caption tag.
@@ -69,6 +100,8 @@ class MysqlResultTable
      * @var boolean
      */
     protected $show_row_numbers;
+    
+    public $csv_filename;
     
     // String names of the different cell data types this class recognizes.
     // Used for css formatting.
@@ -92,6 +125,9 @@ class MysqlResultTable
         $this->column_value_map = array();
         $this->column_widths = array();
         $this->show_row_numbers = true;
+        
+        // Default filename to send to browser upon download.
+        $this->csv_filename = 'results.csv';
         
         $this->query_string = $queryString;
 
@@ -123,45 +159,91 @@ class MysqlResultTable
     // end __construct().
     
     /**
-     * Pre-Conditions: The query string should be a valid SELECT query.
+     * Print HTTP headers that make the browser prompt the user to download
+     * the subsequent data as a CSV file.
      * 
-     * 
-     * @param string $queryString
-     * @return boolean
-     * Returns false if the query failed, otherwise returns true.
      */
-//    public function execute($queryString )
-//    {
-//        $this->query_string = $queryString;
-//
-//        // Run query.
-//        $this->query_result = mysql_query($queryString);
-//        
-//        if( ! $this->query_result )
-//        {
-//            $this->error_message = mysql_error();
-//            return false;
-//        }
-//        
-//        $this->num_rows = mysql_num_rows($this->query_result);
-//        $this->num_cols = mysql_num_fields($this->query_result);
-//        
-//        // Get the field names and types for each column.
-//        // These values may be overridden.
-//        for($i=0; $i < $this->num_cols; $i++)
-//        {
-//            $this->column_names[$i] = mysql_field_name($this->query_result, $i);
-//            $this->column_types[$i] = mysql_field_type($this->query_result, $i);
-//            
-//            // Default to null. Set this 
-//            $this->column_value_map[$i] = null;
-//        }
-//        
-//        return true;
-//    }
-    // end execute().
+    public function print_csv_headers()
+    {
+        // Tell the browser to expect a csv file
+        // Note: try application/octet-stream if the browser doesn't try to save the file.
+        // It works in Firefox 36 on Mac. MD.
+        header('Content-Type: text/csv; charset='.CSV_CHARSET, TRUE);
     
-    public function print_table_string()
+        // Suggest a filename for the browser to use when prompting the user to
+        // save.
+        header('Content-Disposition: attachment; filename="'.$this->csv_filename.'"');
+    }
+    // end print_csv_headers().
+    
+    /**
+     * Fetch the query results and print the output as CSV data.
+     * 
+     * Reference: 
+     * http://code.stephenmorley.org/php/creating-downloadable-csv-files/
+     * 
+     * Pre-Conditions: print_table_html() must not have been called before this
+     *    function. Otherwise, the query isn't re-fetched.
+     * 
+     *    To use column names that are not the raw SQL fields, call 
+     *    $this->set_column_name() on the desired columns.
+     * 
+     * Post-Condition: Rows from the SQL query have been fetched, and the
+     *    results were output to the browser as CSV data.
+     */
+    public function print_table_csv()
+    {
+        if ($this->query_result)
+        {
+            // Create a file pointer connected to the output stream.
+            $output = fopen('php://output', 'w');
+            
+            // Print the column names.
+            fputcsv($output, $this->column_names, CSV_DELIMITER, CSV_ENCLOSURE);
+            
+            while ($row = mysql_fetch_array($this->query_result))
+            {
+                $rowout = array();
+                
+                // Check if there is a replacement mapping for any cells.
+                for($col=0; $col < $this->num_cols; $col++)
+                {
+                    $val = $row[$col];
+                    
+                    // See if there exists a mapping to swap out the query
+                    // value with a more descriptive value.
+                    if( is_array($this->column_value_map[$col]) && isset($this->column_value_map[$col][$val]) )
+                    {
+                        $val = $this->column_value_map[$col][$val];
+                    }
+                    $rowout[] = $val;
+                }
+                // done printing each column in this row.
+                
+                fputcsv($output, $rowout, CSV_DELIMITER, CSV_ENCLOSURE);
+                
+            }
+            // done fetching each result row.
+            
+            // necessary? md.
+            fclose($output);
+        }
+        else
+        {
+            echo 'Server Error';
+        }
+    }
+    // end print_table_csv().
+    
+    /**
+     * Fetch the results of the database query and print HTML table out to the
+     * browser. If a caption is specified, then the table uses that caption.
+     * Likewise, a specified footer is output.
+     * 
+     * Pre-Conditions: print_table_csv() must not have been called before this
+     *    function. Otherwise, the query isn't re-fetched.
+     */
+    public function print_table_html()
     {
         // Only print if the query succeeded.
         if ($this->query_result)
@@ -212,7 +294,7 @@ class MysqlResultTable
                     echo '   <td class="rowNo">'. $rowCnt++ . "</td>\n";
                 }
                 
-                // Fetch each column value in this row.
+                // Print each column value in this row.
                 for($col=0; $col < $this->num_cols; $col++)
                 {
                     $val = $row[$col];
