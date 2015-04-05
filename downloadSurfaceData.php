@@ -14,7 +14,21 @@
  *    Input: User selects term, date range, ticker symbol, Moneyness.
  *    Output: Implied Volatility data from `ivcmpr` table.
  * 
- * License goes here. Created for Fishback Management and Research.
+ * Requires PHP version >= 5.2 for INPUT filtering.
+ * 
+ * Copyright 2015 Fishback Research and Management.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 // Date format to use in this script when printing timestamps as formatted dates.
@@ -36,7 +50,7 @@ const VOLTYPE_HIST = 0;    // historical volatility.
 const VOLTYPE_IMPL = 1;    // implied volatility.
 
 // The limit on the number of database rows to display in a result.
-const MAX_PREVIEW_ROWS = 1000;
+const MAX_PREVIEW_ROWS = 100;
 
 // The limit on the number of database rows to display in a download.
 const MAX_DOWNLOAD_ROWS = 5000;
@@ -149,12 +163,21 @@ if( isset($_GET['moneyness']))
 }
 // done parsing moneyness.
 
+// Parse and sanitize the ticker symbol.
 $ticker = 'SPY';
 if( isset($_GET['ticker']))
 {
     // @TODO: check this input for bad data, such as SQL injection.
-    $ticker = $_GET['ticker'];
+//    $ticker = $_GET['ticker'];
+
+    // Use a custom filter.
+//    $ticker = filter_input(INPUT_GET, 'ticker', FILTER_CALLBACK, array('options' => 'sanitizeTicker') );
+//    $ticker = filter_input(INPUT_GET, 'ticker', FILTER_SANITIZE_STRING);
+    
+    // Remove anything that isn't alphanumeric, period, $, /, space, or dash.
+    $ticker = preg_replace('@[^a-z0-9\.\$\/ \-!]@i', '', $_GET['ticker']);
 }
+// done parsing ticker.
 
 ////
 ////
@@ -164,6 +187,89 @@ if( isset($_GET['ticker']))
 
 // Get the mapping of historical volatility integer values to string names.
 $hvolmap = get_hvolmap();
+
+
+/*
+ * Decide which query to use.
+ */
+$query_str;
+if( $dataType == VOLTYPE_HIST )
+{
+    // Show a preview of the data:
+    // SQL Query from chart.php lines 261-281.
+
+    // Note: Does term really mean volatility type? No. His requirements specify
+    //       that the user chooses "term." However, the query asks for a volatility
+    //       type. Also, there is a volatility type on the chart menu that matches 
+    //       what this query expects.
+    //       
+    //       // This is the original query I thought was correct. MD.
+    //    $mysqlq_str="SELECT eqp.date_, eqp.vol \n"
+    //        . "FROM eqhvol AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId AND eqm.startDate >= '$startDate' and eqm.endDate <= '$endDate' \n"
+    //        . "WHERE eqm.ticker like '$ticker' AND eqp.date_<= now() \n"
+    //        . "  AND eqp.volType=$volType\n";
+
+
+    // Query is adapted from chart.php Line 375.
+    $query_str="SELECT eqm.ticker, hvol.volType, eqp.close_, hvol.vol, \n"
+    . "  date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date\n"
+    . "FROM eqprice AS eqp\n"
+    . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
+    . "      AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
+    . "JOIN eqhvol AS hvol ON hvol.eqId=eqp.eqId\n"
+    //. " AND hvol.volType=".$volType."\n"
+    . "   AND hvol.volType IN (".  implode(',', $volTypes).")\n"
+    . "   AND hvol.date_=eqp.date_\n"
+    . "WHERE eqm.ticker like '$ticker'\n"
+    . "  AND eqp.date_>='$startDate'\n"
+    . "  AND eqp.date_<='$endDate'\n"
+    . "ORDER BY eqp.date_, hvol.volType\n" ;
+}
+else
+{
+            // SQL Query from chart.php lines 272-283.
+//        $query_str="SELECT ivcmpr.date_, ivcmpr.ivMid\n"
+//        . "FROM ivcmpr\n"
+//        . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=ivcmpr.eqId AND ivcmpr.date_ between eqm.startDate and eqm.endDate\n"
+//        . "WHERE eqm.ticker like '$ticker'\n"
+//        . "  AND ivcmpr.date_ <= '$currentDate'\n"
+//        . "  AND ivcmpr.expiry=".abs($v)."\n"
+//        . "  AND ivcmpr.strike=100";
+
+    // SQL query from chart.php line 373.
+    $query_str="SELECT eqm.ticker,   eqp.close_, iv.ivMid,\n"
+    . "  date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS pricingDate\n"
+    . "FROM eqprice AS eqp\n"
+    . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
+    . "      AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
+    . "LEFT JOIN ivcmpr AS iv ON iv.eqId=eqp.eqId\n"
+    . "      AND iv.strike=$moneyness\n"
+//        . "      AND iv.strike=100\n"
+    . "      AND iv.expiry=".($volTypes[0]*-1)."\n"
+    . "      AND iv.date_=eqp.date_\n"
+    . "WHERE eqm.ticker like '$ticker'\n"
+    . "  AND eqp.date_ <= '$endDate'\n"
+    . "  AND eqp.date_ >= '$startDate'\n"
+    . "ORDER BY eqp.date_\n";
+}
+// done deciding which query to use.
+
+/*
+ * Check if we're printing CSV data.
+ */
+if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
+{
+    $query_str .= "LIMIT ".MAX_DOWNLOAD_ROWS;
+    
+    $ResultTable = new MysqlResultTable($query_str);
+    $ResultTable->print_csv_headers();
+    $ResultTable->print_table_csv();
+    
+    exit;
+}
+/*
+ * done printing CSV data.
+ */
 
 /*
  * Print Page Top.
@@ -201,25 +307,13 @@ $hvolmap = get_hvolmap();
    input.ticker{ background:linear-gradient(#fffadf, #fff3a5) repeat scroll 0 0 #fff9df;}
       
    label{padding-right: 10px; border-radius: 10px;}
-   label:hover {
-       color: #eee; background-color: #222;
-   }
-   
-    <?php
+   label:hover { color: #eee; background-color: #222; }   
+<?php
     // At page load, hide either the Hist. Volatility filters or the Implied
     // volatility filters, depending $dataType.
-   if($dataType == VOLTYPE_IMPL)
-       {
-        echo '#hvolFS{display:none}';
-       
-       }
-       else
-       {
-        echo '#ivolFS{display:none}';   
-       }?>
-   
-   #preview { position: absolute;
-             top: 123px; left: 240px;  }
+    echo $dataType == VOLTYPE_IMPL ? '#hvolFS{display:none}' : '#ivolFS{display:none}';
+?>
+   #preview { position: absolute; top: 123px; left: 240px;  }
    
    #preview table {font-family: courier new, courier,monospace;
              font-size: 12pt;
@@ -235,38 +329,34 @@ $hvolmap = get_hvolmap();
 
    #preview p.rightDim { color:#aaa; margin:6px 10px 30px; text-align: right; width:69%; }
 
-   
-   fieldset { border-color: goldenrod;}
-   
-   
-   
+   fieldset { border-color: goldenrod;}   
   </style>
   <script type="text/javascript">
-      /**
-       * Show or hide the historical or implied volatility filters.
-       * This function checks the value of the dataType checkbox and hides
-       * one set of filters and shows the other set.
-       * 
-       * @returns {undefined}
-       */
-      function showHvol()
-      {
-          var hvolChk = document.getElementById('dataTypeHvolChk');
-          var hvolFS = document.getElementById('hvolFS');
-          var ivolFS = document.getElementById('ivolFS');
-          
-          // hvol has been checked.
-          if( hvolChk.checked )
-          {
-              hvolFS.style.display = 'block';
-              ivolFS.style.display = 'none';
-          }
-          else
-          {
-              hvolFS.style.display = 'none';
-              ivolFS.style.display = 'block';
-          }
-      }
+    /**
+     * Show or hide the historical or implied volatility filters.
+     * This function checks the value of the dataType checkbox and hides
+     * one set of filters and shows the other set.
+     * 
+     * @returns {undefined}
+     */
+    function showHvol()
+    {
+        var hvolChk = document.getElementById('dataTypeHvolChk');
+        var hvolFS = document.getElementById('hvolFS');
+        var ivolFS = document.getElementById('ivolFS');
+
+        // hvol has been checked.
+        if( hvolChk.checked )
+        {
+            hvolFS.style.display = 'block';
+            ivolFS.style.display = 'none';
+        }
+        else
+        {
+            hvolFS.style.display = 'none';
+            ivolFS.style.display = 'block';
+        }
+    }
   </script>
  </head>
  <body>
@@ -356,7 +446,9 @@ $hvolmap = get_hvolmap();
       
       <div class="padSmall">Ticker Symbol: <input class="ticker" type="text" name="ticker" value="<?php echo $ticker;?>"/></div>
       
-      <a href="<?php echo basename(__FILE__); ?>" style="display:inline-block">Reset</a> <input type="submit" value="Submit" />
+      <a href="<?php echo basename(__FILE__); ?>" style="display:inline-block">Reset</a> <input type="submit" value="Preview" name="submit" />
+      <br>
+      <input type="submit" value="Download" name="submit" />
     </form>
   </div>
 <?php
@@ -367,42 +459,25 @@ $hvolmap = get_hvolmap();
 /*
  * Page Body.
  */
+
+// Print from database if the user selected at least one term name.
 if( count($volTypes) > 0 )
 {
+    /*
+     * ?>
+   <div id="#downloadForm">
+    <form action="<?php echo basename(__FILE__); ?>" method="POST">
+     <input type="hidden" name=""
+    </form>
+  </div>
+  <?php
+     *     */
+    
+    $query_str .= "LIMIT ".MAX_PREVIEW_ROWS;
+    
     echo '<div id="preview">'."\n";
     if( $dataType == VOLTYPE_HIST )
     {
-//        print_hvoldata($ticker, $startDate, $endDate, $volTypes, $hvolmap);
-            //
-        // Show a preview of the data:
-        // SQL Query from chart.php lines 261-281.
-
-        // Note: Does term really mean volatility type? No. His requirements specify
-        //       that the user chooses "term." However, the query asks for a volatility
-        //       type. Also, there is a volatility type on the chart menu that matches 
-        //       what this query expects.
-        //       
-        //       // This is the original query I thought was correct. MD.
-        //    $mysqlq_str="SELECT eqp.date_, eqp.vol \n"
-        //        . "FROM eqhvol AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId AND eqm.startDate >= '$startDate' and eqm.endDate <= '$endDate' \n"
-        //        . "WHERE eqm.ticker like '$ticker' AND eqp.date_<= now() \n"
-        //        . "  AND eqp.volType=$volType\n";
-
-
-        // Query is adapted from chart.php Line 375.
-        // @TODO: see if this data is correct. Need to ask about it, because 
-        // a query will return results even if there is no hvol.vol data. (because of left join).
-        // changing to normal join fixes that. data starts whenever hvol data starts.
-        $query_str="SELECT eqm.ticker, hvol.volType, eqp.close_, hvol.vol, \n"
-        . "date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date\n"
-        . "FROM eqprice AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
-        . "  JOIN eqhvol AS hvol ON hvol.eqId=eqp.eqId\n"
-        //. " AND hvol.volType=".$volType."\n"
-        . "   AND hvol.volType IN (".  implode(',', $volTypes).")\n"
-        . "AND hvol.date_=eqp.date_\n"
-        . "WHERE eqm.ticker like '$ticker' AND eqp.date_>='$startDate' AND eqp.date_<='$endDate'\n"
-        . "ORDER BY eqp.date_, hvol.volType\n";
-        
         $ResultTable = new MysqlResultTable($query_str);
 
         $ResultTable->caption = 'Preview';
@@ -418,36 +493,28 @@ if( count($volTypes) > 0 )
         $ResultTable->set_column_value_map(1, $hvolmap);
         $ResultTable->set_column_type(1, MysqlResultTable::TYPE_STRING);
         
-        $ResultTable->print_table_string();
+        $ResultTable->print_table_html();
         
         // Print the raw query for debugging.
         echo '<pre>'.$query_str.'</pre>';
     }
     else
-    {
-        //
-        // Code from chart.php lines 272-283.
-        //
-    
-        //Now, run query to get data
-        $mysqlq="SELECT eqp.date_, eqp.ivMid\n"
-        . "FROM ivcmpr AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId AND '$currentDate' between eqm.startDate and eqm.endDate\n"
-        . "WHERE eqm.ticker like '$ticker'\n"
-        . "  AND eqp.date_<='$currentDate'\n"
-        . "  AND eqp.expiry=".abs($v)."\n"
-        . "  AND eqp.strike=100";
-
-        if($mysql=mysql_query($mysqlq)) {
-            $row=mysql_fetch_array($mysql);
-            $volOutput="[ [".(strtotime($row['date_'])*1000).", ".number_format($row['ivMid']*100, 4)." ]";
-            while($row=mysql_fetch_array($mysql)) {
-              $volOutput .= ", [".(strtotime($row['date_'])*1000).", ".number_format($row['ivMid']*100, 4)." ]\n";
-            }
-            $volOutput .= " ]";
-
-            array_push($volOutArray, $volOutput);
-        }
-        $volName="Implied Volatility ".abs($v)."m";
+    {   
+        $ResultTable = new MysqlResultTable($query_str);
+        $ResultTable->caption = 'Preview';
+        $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
+//        $ResultTable->set_column_name(0, 'Ticker');
+//        $ResultTable->set_column_name(1, 'Indicator');
+//        $ResultTable->set_column_name(1, 'Closing Price');
+//        $ResultTable->set_column_name(3, 'Realized Volatility');
+//        $ResultTable->set_column_name(4, 'Pricing Date');
+//        $ResultTable->set_column_name(5, 'Moneyness');
+        
+        $ResultTable->print_table_html();
+        
+        // Print the raw query for debugging.
+        echo '<pre>'.$query_str.'</pre>';
+        
         //
         //
         //
@@ -535,6 +602,11 @@ function get_hvolmap()
     return $harray;
 }
 // end get_hvolmap().
+
+//function sanitizeTicker($value)
+//{
+//    return preg_replace('@[^a-z0-9\.\$\/]@i', '', $value);
+//}
 
 ?>
  </body>
