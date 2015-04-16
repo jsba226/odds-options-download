@@ -58,6 +58,8 @@ const MAX_PREVIEW_ROWS = 100;
 // The limit on the number of database rows to display in a download.
 const MAX_DOWNLOAD_ROWS = 5000;
 
+const VOLATILITY_DIGITS_SHOW = 12;
+
 // List of possible moneyness values to show filters for.
 // The order of the elements in this array determine which order the filters
 // are displayed; e.g. array(95,90,85) shows 95, then 90, then 85.
@@ -530,6 +532,12 @@ if( count($volTypes) > 0 )
         
         replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
         
+        // Set column formats for the volatility columns: specify the number of digits to show.
+        for($col=4, $n=$ResultTable->get_num_cols(); $col < $n; $col++)
+        {
+            $ResultTable->set_column_format($col, '%0.'.VOLATILITY_DIGITS_SHOW.'f');
+        }
+        
         $ResultTable->print_table_html();
     }
     else
@@ -544,6 +552,12 @@ if( count($volTypes) > 0 )
         $ResultTable->set_column_name(4, 'Closing Price');
 
         replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
+        
+        // Set column formats for the volatility columns: specify the number of digits to show.
+        for($col=5, $n=$ResultTable->get_num_cols(); $col < $n; $col++)
+        {
+            $ResultTable->set_column_format($col, '%0.'.VOLATILITY_DIGITS_SHOW.'f');
+        }
         
         $ResultTable->print_table_html();
     }
@@ -734,6 +748,21 @@ function vol_sql_generate()
 }
 // end hvol_sql_generate().
 
+/**
+ * Replace column headers in a TableSet object with headers in the array, 
+ * $map.
+ * 
+ * Array keys in $map are compared against column names. If a column
+ * name sans prefix matches the array key, then the array value for that key
+ * replaces the column name. I use this to replace volatility column names,
+ * which are returned with integer values, and instead use descriptive titles.
+ * 
+ * @param array $map
+ * @param int $startCol
+ * @param string $colPrefix
+ * @param TableSet $Tableset
+ * @return boolean
+ */
 function replace_headers_by_map($map, $startCol, $colPrefix, $Tableset)
 {
     if( !is_array($map))
