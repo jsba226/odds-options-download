@@ -68,6 +68,8 @@ session_start();
 require('./dbconnect.php');
 
 // Library for displaying nice tables.
+require('./class-Tableset.php');
+require('./class-TablesetDefaultCSS.php');
 require('./class-MysqlResultTable.php');
 
 // A stack of error messages to display to the user.
@@ -167,13 +169,6 @@ if( isset($_GET['moneyness']))
 $ticker = 'SPY';
 if( isset($_GET['ticker']))
 {
-    // @TODO: check this input for bad data, such as SQL injection.
-//    $ticker = $_GET['ticker'];
-
-    // Use a custom filter.
-//    $ticker = filter_input(INPUT_GET, 'ticker', FILTER_CALLBACK, array('options' => 'sanitizeTicker') );
-//    $ticker = filter_input(INPUT_GET, 'ticker', FILTER_SANITIZE_STRING);
-    
     // Remove anything that isn't alphanumeric, period, $, /, space, or dash.
     $ticker = preg_replace('@[^a-z0-9\.\$\/ \-!]@i', '', $_GET['ticker']);
 }
@@ -190,12 +185,12 @@ $hvolmap = get_hvolmap();
 
 // Create the mapping of Implied Volatility DB result values to string names.
 $ivolmap = array(
-    '1' => 'IV 1 Month',
-    '2' => 'IV 2 Months',
-    '3' => 'IV 3 Months',
-    '4' => 'IV 4 Months',
-    '5' => 'IV 5 Months',
-    '6' => 'IV 6 Months' );
+    '1' => '1 Month',
+    '2' => '2 Months',
+    '3' => '3 Months',
+    '4' => '4 Months',
+    '5' => '5 Months',
+    '6' => '6 Months' );
 
 /*
  * Decide which query to use for both the preview and the CSV download.
@@ -203,73 +198,71 @@ $ivolmap = array(
 $query_str;
 if( $dataType == VOLTYPE_HIST )
 {
+    // @TODO: Don't use date_format in SQL. James said their PHP has more
+    // resources than their MySQL to handle processing in PHP.
     
-    // This is the original query I thought was correct but wasn't. MD.
-    // SQL Query from chart.php line 262.    
-//    $query_str="SELECT eqp.date_, eqp.vol \n"
-//    . "FROM eqhvol AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
-//    . "  AND eqm.startDate >= '$startDate' and eqm.endDate <= '$endDate' \n"
-//    . "WHERE eqm.ticker like '$ticker' AND eqp.date_<= now() \n"
-//    . "  AND eqp.volType=$volType\n";
-    // Note: Does term really mean volatility type? No. His requirements specify
-    //       that the user chooses "term." However, the query asks for a volatility
-    //       type. Also, there is a volatility type on the chart menu that matches 
-    //       what this query expects.
-
+    // @TODO: Don't use subqueries for hvol data.
 
     // SQL query is adapted from query in chart.php Line 351.
-    $query_str="SELECT eqm.ticker, hvol.volType, eqp.close_, hvol.vol, \n"
-    . "  date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date\n"
-    . "FROM eqprice AS eqp\n"
+    $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date,\n"
+    . " eqm.ticker, 'HV' as Indicator, eqp.close_"
+
+    . vol_sql_generate()
+//    . ", hvol.volType, hvol.vol \n"
+
+    . "\nFROM eqprice AS eqp\n"
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
-    . "JOIN eqhvol AS hvol ON hvol.eqId=eqp.eqId\n"
-    //. " AND hvol.volType=".$volType."\n"
-    . "  AND hvol.volType IN (".  implode(',', $volTypes).")\n"
-    . "  AND hvol.date_=eqp.date_\n"
+
+//    . "JOIN eqhvol AS hvol ON hvol.eqId=eqp.eqId\n"
+//    . "  AND hvol.volType IN (".  implode(',', $volTypes).")\n"
+//    . "  AND hvol.date_=eqp.date_\n"
+
     . "WHERE eqm.ticker like '$ticker'\n"
     . "  AND eqp.date_>='$startDate'\n"
     . "  AND eqp.date_<='$endDate'\n"
-    . "ORDER BY eqp.date_, hvol.volType\n" ;
+    . "ORDER BY eqp.date_ " ;
 }
 else
 {
     // Take the selected values of IV expiry and make them positive.
     // IV expiry values are submitted in the form with negative integers
     // to distinguish them from Historical Volatility expiration values.
-    $expiry = array();
-    foreach($volTypes as $val )
-    {
-        $expiry[] = $val * -1;
-    }
+//    $expiry = array();
+//    foreach($volTypes as $val )
+//    {
+//        $expiry[$val * -1] = ($val * -1).'';
+//    }
+    
+    // @TODO: Don't use date_format in SQL. James said their PHP has more
+    // resources than their MySQL to handle processing in PHP.
+    
+    // @TODO: Don't use subqueries for ivol data.
     
     // SQL query adapted from chart.php line 349.
-    $query_str="SELECT eqm.ticker AS Ticker,\n"
-    . "  FLOOR(iv.expiry) as Indicator,\n"   // expiry values are float; easier to use int.
-    . "  iv.strike as Moneyness, eqp.close_,\n"
-    . "  iv.ivBid, iv.ivAsk, iv.ivMid,\n"
-    . "  date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS PricingDate\n"
-    . "FROM eqprice AS eqp\n"
+    $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS PricingDate,\n"
+    . "  eqm.ticker AS Ticker, 'IV' as Indicator, '$moneyness' as Moneyness,\n"
+    . "  eqp.close_ "
+            
+    . vol_sql_generate()
+
+//    . "  iv.strike as Moneyness,\n"
+//    . "  FLOOR(iv.expiry) as Term,\n"   // expiry values are float; easier to use int.
+//    . "  iv.ivMid as Volatility,\n"
+    
+    . "\nFROM eqprice AS eqp\n"
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
-    . "JOIN ivcmpr AS iv ON iv.eqId=eqp.eqId\n"
-    . "  AND iv.strike=$moneyness\n"
-//        . "      AND iv.strike=100\n"
-    . "  AND iv.expiry IN (".implode(',',$expiry).")\n"
-    . "  AND iv.date_=eqp.date_\n"
+            
+//    . "JOIN ivcmpr AS iv ON iv.eqId=eqp.eqId\n"
+//    . "  AND iv.strike=$moneyness\n"
+//    . "  AND iv.expiry IN (".implode(',',$expiry).")\n"
+//    . "  AND iv.date_=eqp.date_\n"
+            
     . "WHERE eqm.ticker like '$ticker'\n"
     . "  AND eqp.date_ <= '$endDate'\n"
     . "  AND eqp.date_ >= '$startDate'\n"
-    . "ORDER BY eqp.date_, iv.expiry \n";
-    
-    // SQL query adapted from chart.php line 249.
-//    $query_str = "SELECT eqp.date_, eqp.ivMid\n"
-//    . "FROM ivcmpr AS eqp LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
-//    . "  AND '$currentDate' between eqm.startDate and eqm.endDate\n"
-//    . "WHERE eqm.ticker like '$ticker'\n"
-//    . "  AND eqp.date_<='$currentDate'\n"
-//    . "  AND eqp.expiry IN (".implode(',',$expiry).") \n"
-//    . "  AND eqp.strike=$moneyness";
+    . "ORDER BY eqp.date_ ";
 }
 // done deciding which query to use.
 
@@ -336,7 +329,6 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
    }
    
    #filters { width: 200px;}
-/*   #filters input[value="Download"] { position:absolute; left:250px; top:123px; z-index:2; }*/
    
    #downloadForm { position:absolute; left:250px; top:123px; z-index:2; }
    
@@ -357,19 +349,27 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 ?>
    #preview { position: absolute; top: 123px; left: 240px;  }
    
-   #preview table {font-family: courier new, courier,monospace;
+/*   #preview table {font-family: courier new, courier,monospace;
              font-size: 12pt;
              border-spacing: 0px;
              border-left: solid 1px #777;
              border-bottom: solid 1px #777;
-             /*width: 650px;*/
+             width: 650px;
    }
    #preview th,#preview table caption {font-family: arial; background-color: #333;}
    
    #preview td, #preview th { padding: 0px 10px; border-style: solid; border-width: 1px 1px 0px 0px; border-color: #777; }
    #preview td.int,#preview td.real,#preview td.rowNo { text-align: right;  }
 
-   #preview p.rightDim { color:#aaa; margin:6px 10px 30px; text-align: right; width:69%; }
+   #preview p.rightDim { color:#aaa; margin:6px 10px 30px; text-align: right; width:69%; }*/
+
+<?php
+$TDC = new TablesetDefaultCSS();
+$TDC->set_css_tdOdd_value('background-color', null);
+$TDC->set_css_td_value('background-color', '#444');
+$TDC->set_tr_hover_value('background-color', null);
+$TDC->print_css();
+?>
 
    fieldset { border-color: goldenrod;}   
   </style>
@@ -436,7 +436,7 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
     {
         echo '<label><input type="checkbox" name="volType[]" value="'.$id.'"';
         echo in_array($id, $volTypes) ? ' checked="checked"' : '';
-        echo ">$name</label><br/>\n";
+        echo ">HV $name</label><br/>\n";
     }
       ?>
        </fieldset>
@@ -449,13 +449,13 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
        // Output the 1 month first, not using a loop; its label isn't plural.
         echo '<label><input type="checkbox" name="volType[]" value="-1"';
         echo in_array(-1, $volTypes) ? ' checked="checked"' : '';
-        echo '>1 month</label><br/>'."\n";
+        echo '>IV 1 Month</label><br/>'."\n";
         // Output 2-6 months, using plural form of "months".
        for($i=-2; $i >= -6; $i--)
        {
            echo '<label><input type="checkbox" name="volType[]" value="'.$i.'"';
            echo in_array($i, $volTypes) ? ' checked="checked"' : '';
-           echo '>'.($i*-1).' months</label><br/>'."\n";
+           echo '>IV '.($i*-1).' Months</label><br/>'."\n";
        }
        ?>
       </fieldset>
@@ -504,66 +504,49 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 // Print from database if the user selected at least one term name.
 if( count($volTypes) > 0 )
 {
+    // Print the hidden download form so that the preview is consistent
+    // with whatever the user downloads as CSV.
     print_download_form();
-    
-    /*
-     * ?>
-   <div id="#downloadForm">
-    <form action="<?php echo basename(__FILE__); ?>" method="POST">
-     <input type="hidden" name=""
-    </form>
-  </div>
-  <?php
-     *     */
-    
+        
     $query_str .= "LIMIT ".MAX_PREVIEW_ROWS;
     
     echo '<div id="preview">'."\n";
     if( $dataType == VOLTYPE_HIST )
     {
-        $ResultTable = new MysqlResultTable($query_str);
+        $ResultTable = new MysqlResultTable();
+        $ResultTable->executeQuery($query_str);
 
         $ResultTable->caption = 'Preview';
         $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
         
-        $ResultTable->set_column_name(0, 'Ticker');
-        $ResultTable->set_column_name(1, 'Indicator');
-        $ResultTable->set_column_name(2, 'Closing Price');
-        $ResultTable->set_column_name(3, 'Realized Volatility');
-        $ResultTable->set_column_name(4, 'Pricing Date');
+        $ResultTable->set_column_name(0, 'Pricing Date');
+        $ResultTable->set_column_name(1, 'Ticker');
+        $ResultTable->set_column_name(2, 'Indicator');
+        $ResultTable->set_column_name(3, 'Closing Price');
         
-        $ResultTable->set_column_width(1, '20%');
-        $ResultTable->set_column_value_map(1, $hvolmap);
-        $ResultTable->set_column_type(1, MysqlResultTable::TYPE_STRING);
+        replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
         
         $ResultTable->print_table_html();
-        
-        // Print the raw query for debugging.
-        echo '<pre>'.$query_str.'</pre>';
     }
     else
-    {   
-        $ResultTable = new MysqlResultTable($query_str);
+    {
+        $ResultTable = new MysqlResultTable();
+        $ResultTable->executeQuery($query_str);
+        
         $ResultTable->caption = 'Preview';
         $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
-//        $ResultTable->set_column_name(0, 'Ticker');
-//        $ResultTable->set_column_name(1, 'Indicator');
-        $ResultTable->set_column_name(3, 'Closing Price');
-//        $ResultTable->set_column_name(3, 'Realized Volatility');
-//        $ResultTable->set_column_name(3, 'Pricing Date');
-//        $ResultTable->set_column_name(5, 'Moneyness');
         
-        $ResultTable->set_column_value_map(1, $ivolmap);
+        $ResultTable->set_column_name(0, 'Pricing Date');
+        $ResultTable->set_column_name(4, 'Closing Price');
+
+        replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
         
         $ResultTable->print_table_html();
-        
-        // Print the raw query for debugging.
-        echo '<pre>'.$query_str.'</pre>';
-        
-        //
-        //
-        //
     }
+    
+    // Print the raw query for debugging.
+    echo '<pre>'.$query_str.'</pre>';
+    
     echo "</div>\n";
 }
 
@@ -636,7 +619,7 @@ function get_hvolmap()
        }
        //Trim out the (X days)
        $name=preg_replace('/ \W.*\W/', "", $name);
-       $harray[$id] = 'HV ' . trim($name);
+       $harray[$id] = trim($name);
     }
     // done reading each eqhvolmap row.
     }
@@ -654,12 +637,12 @@ function get_hvolmap()
  * in the browser.
  * 
  * 
- * @global type $dataType
- * @global type $volTypes
- * @global type $startDate
- * @global type $endDate
- * @global type $moneyness
- * @global type $ticker
+ * @global int $dataType
+ * @global array $volTypes
+ * @global string $startDate
+ * @global string $endDate
+ * @global int $moneyness
+ * @global string $ticker
  */
 function print_download_form()
 {
@@ -689,6 +672,110 @@ function print_download_form()
 }
 // end print_download_form().
 
+/**
+ * Create subquery strings for each selected volatility type.
+ * The resulting string is put inside another query.
+ * 
+ * NOTE: This is a temporary solution. It would be better to 
+ * run a separate query and then join the data with the other query in PHP,
+ * based on the system constraints.
+ * 
+ * @global array $volTypes
+ * @global array $moneyness
+ * @global int $dataType
+ * @return string
+ */
+function vol_sql_generate()
+{
+    global $volTypes, $moneyness, $dataType;
+    
+    $retstr = "";
+    
+    // Only generate subqueries if the user selected vol Types.
+    if( count($volTypes) > 0)
+    {
+        if( $dataType == VOLTYPE_HIST )
+        {
+            // For each selection, query the database for the historical volatility data.
+            foreach( $volTypes as $volType)
+            {
+                $retstr .= ",\n  ("
+                . "SELECT hvol.vol FROM eqhvol hvol "
+                . "WHERE hvol.eqId=eqp.eqId AND hvol.volType = '$volType' "
+                . "AND hvol.date_=eqp.date_ ) as vol$volType";
+            }
+        }
+        else if( $dataType == VOLTYPE_IMPL)
+        {            
+            // For each selection, query the database for the historical volatility data.
+            foreach( $volTypes as $volType)
+            {
+                // Take the submitted form value, which is negatives for IVOL,
+                // and make it positive.
+                $exp = $volType * -1;
+                
+                $retstr .= ",\n  ("
+                . "SELECT iv.ivMid FROM ivcmpr AS iv "
+                . "WHERE iv.eqId=eqp.eqId AND iv.expiry = '$exp' "
+                . "AND iv.date_=eqp.date_ "
+                . "AND iv.strike='$moneyness' "
+                . " ) as vol$exp";
+            }
+        }
+        // end if type is HIST or IMPL.
+    }
+    // end if count volTypes > 0.
+    
+    return $retstr;
+}
+// end hvol_sql_generate().
+
+function replace_headers_by_map($map, $startCol, $colPrefix, $Tableset)
+{
+    if( !is_array($map))
+    {
+        return false;
+    }
+    
+//    $Tableset = new Tableset();
+
+    // Replace column headers with descriptive ones.
+    // For each column after closing price.
+    for($col=$startCol, $n=$Tableset->get_num_cols(); $col < $n;$col++)
+    {
+        $cname = $Tableset->get_col_name($col);        
+        $cname = str_replace($colPrefix, '', $cname);
+        
+        // the volType column name should be "vol" followed by a number.
+        // remove "vol" and swap a description for the number.
+//                $cname = substr($this->column_names[$colNo], 3);
+        if( isset($map[$cname]))
+        {
+            $Tableset->set_column_name($col, $map[$cname]);
+        }        
+    }
+    // done replacing column headers.
+    return true;
+}
+
 ?>
  </body>
 </html>
+<?php
+/*
+James's pseudo code for grouping result data by date.
+
+Show Matt the pivot needed for outputing data grouped by date
+
+$array=array();
+while ($mysql){
+   if(empty($array[$my.date]){
+	 $array[$my.date]=array();
+   }
+  $ARRAY[$MY.DATE][HV4]=5.0
+ }
+foreach ($array as $date=>$darray){
+<td>$date</td><td>$darray['ticker']
+
+} 
+ */
