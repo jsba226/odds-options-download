@@ -100,7 +100,7 @@ class MysqlResultTable extends Tableset
         }
         
         // Fetch the result data.
-        while( $row = mysql_fetch_array($this->query_result))
+        while( $row = mysql_fetch_array($this->query_result, MYSQL_NUM))
         {
             $this->data[] = $row;
         }

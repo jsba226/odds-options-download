@@ -31,6 +31,9 @@
  * limitations under the License.
  */
 
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 // Date format to use in this script when printing timestamps as formatted dates.
 // YYYY-mm-dd: example: 2015-04-02 means April 2, 2015.
 const DATE_YYYYMMDD = 'Y-m-d';
@@ -115,7 +118,7 @@ if( isset($_GET['volType']))
 date_default_timezone_set(TIMEZONE_DEFAULT);
 
 // Start Date, default to 30 days ago.
-$startDate = date(DATE_YYYYMMDD,  mktime() - 30*86400 );
+$startDate = date(DATE_YYYYMMDD,  time() - 30*86400 );
 if( isset($_GET['startDate']))
 {
     if(preg_match(PREG_DATE_YYYYMMDD, $_GET['startDate']))
@@ -274,24 +277,25 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 {
     $query_str .= "LIMIT ".MAX_DOWNLOAD_ROWS;
     
-    $ResultTable = new MysqlResultTable($query_str);
+    $ResultTable = new MysqlResultTable();
+    $ResultTable->executeQuery($query_str);
     
     if( $dataType == VOLTYPE_HIST )
     {
-        $ResultTable->set_column_value_map(1, $hvolmap);
-        $ResultTable->set_column_name(0, 'Ticker');
-        $ResultTable->set_column_name(1, 'Indicator');
-        $ResultTable->set_column_name(2, 'Closing Price');
-        $ResultTable->set_column_name(3, 'Realized Volatility');
-        $ResultTable->set_column_name(4, 'Pricing Date');
+        $ResultTable->set_column_name(0, 'Pricing Date');
+        $ResultTable->set_column_name(1, 'Ticker');
+        $ResultTable->set_column_name(2, 'Indicator');
+        $ResultTable->set_column_name(3, 'Closing Price');
+        
+        replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
+        
     }
     else
     {
-        $ResultTable->set_column_value_map(1, $ivolmap);
+        $ResultTable->set_column_name(0, 'Pricing Date');
+        $ResultTable->set_column_name(4, 'Closing Price');
         
-//        $ResultTable->set_column_name(0, 'Ticker');
-        $ResultTable->set_column_name(3, 'Closing Price');
-//        $ResultTable->set_column_name(3, 'Pricing Date');
+        replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
     }
     
     $ResultTable->print_csv_headers();
