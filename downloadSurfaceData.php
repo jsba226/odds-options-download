@@ -31,33 +31,13 @@
  * limitations under the License.
  */
 
-// For debugging, show all errors.
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-// Date format to use in this script when printing timestamps as formatted dates.
-// YYYY-mm-dd: example: 2015-04-02 means April 2, 2015.
-const DATE_YYYYMMDD = 'Y-m-d';
-
-// Default timezone to use in this script. Set default timezone to avoid PHP
-// warnings output to browser (or log file).
-const TIMEZONE_DEFAULT = 'America/New_York';
-
-// Regular Expression used to verify format of dates submitted via GET requests.
-const PREG_DATE_YYYYMMDD = '/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/';
-
-// Format dates from the database with this style.
-const SQL_DATE_FORMAT = '%Y-%m-%d';
+// Include a file containing functions and constants shared between this script
+// and other downloader scripts. Also attempts database connection.
+require './inc.download.php';
 
 // Volatility types, used in html form and parsing input.
 const VOLTYPE_HIST = 0;    // historical volatility.
 const VOLTYPE_IMPL = 1;    // implied volatility.
-
-// The limit on the number of database rows to display in a result.
-const MAX_PREVIEW_ROWS = 100;
-
-// The limit on the number of database rows to display in a download.
-const MAX_DOWNLOAD_ROWS = 5000;
 
 const VOLATILITY_DIGITS_SHOW = 12;
 
@@ -70,13 +50,6 @@ $MONEYNESS_VALUES = array(105,95,90,85,80);
 // Start the session to setup cookies.
 session_start();
 
-// Connect to the database or die. MD.
-require('./dbconnect.php');
-
-// Library for displaying nice tables.
-require('./class-Tableset.php');
-require('./class-TablesetDefaultCSS.php');
-require('./class-MysqlResultTable.php');
 
 // A stack of error messages to display to the user.
 $errors = array();
@@ -94,7 +67,6 @@ $dataType = isset($_GET['dataType']) && $_GET['dataType'] == VOLTYPE_IMPL ? VOLT
 
 
 // Get the volatility type.
-// @TODO: look into PHP's new filtering functions.
 $volTypes = array();
 if( isset($_GET['volType']))
 {
@@ -117,48 +89,14 @@ if( isset($_GET['volType']))
 }
 // done getting the volatility type.
 
-// (Certain installations of PHP print warnings if default timezone is not set.)
-date_default_timezone_set(TIMEZONE_DEFAULT);
 
-// Start Date, default to 30 days ago.
+// Start Date, default to 30 days ago. Overwritten if user submitted good value.
 $startDate = date(DATE_YYYYMMDD,  time() - 30*86400 );
-if( isset($_GET['startDate']))
-{
-    if(preg_match(PREG_DATE_YYYYMMDD, $_GET['startDate']))
-    {
-        if(strtotime($_GET['startDate']) !== false)
-        {
-            $startDate = $_GET['startDate'];
-        }else{
-            $errors[] = 'The startDate you submitted, '.$_GET['startDate'].', is not a real date.';
-        }
-    }
-    else
-    {
-        $errors[] = 'The startDate submitted must be in the format YYYY-mm-dd.';
-    }
-}
-// done parsing startdate.
+parse_date_entry(INPUT_GET, 'startDate', $startDate, $errors);
 
-// End Date, default to now.
+// End Date, default to now. Overwritten if user submitted good value.
 $endDate = date(DATE_YYYYMMDD);
-if( isset($_GET['endDate']))
-{
-    if(preg_match(PREG_DATE_YYYYMMDD, $_GET['endDate']))
-    {
-        if(strtotime($_GET['endDate']) !== false)
-        {
-            $endDate = $_GET['endDate'];
-        }else{
-            $errors[] = 'The endDate you submitted, '.$_GET['endDate'].', is not a real date.';
-        }
-    }
-    else
-    {
-        $errors[] = 'The endDate submitted must be in the format YYYY-mm-dd.';
-    }
-}
-// done parsing endDate.
+parse_date_entry(INPUT_GET, 'endDate', $endDate, $errors);
 
 // Default moneyness/strike to 100. Only allow values in $MONEYNESS_VALUES.
 $moneyness = 100;
@@ -176,7 +114,7 @@ $ticker = 'SPY';
 if( isset($_GET['ticker']))
 {
     // Remove anything that isn't alphanumeric, period, $, /, space, or dash.
-    $ticker = preg_replace('@[^a-z0-9\.\$\/ \-!]@i', '', $_GET['ticker']);
+    $ticker = ticker_sanitize($_GET['ticker']);    
 }
 // done parsing ticker.
 
@@ -299,41 +237,12 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
   <title>OptionApps</title>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
-  <style type="text/css">
-   body {
-       color: white;
-       background-color: #444;
-       font-family: Helvetica,Arial,sans-serif;
-       margin: 10px 20px 100px;
-   }
-   ul#errors{
-       color:red;
-       background:white;
-       padding: 20px;
-   }
-   
-   #filters { width: 200px;}
-   
-   #downloadForm { position:absolute; left:250px; top:123px; z-index:2; }
-   
-   a { color: white; padding: 0.55em 11px 0.5em;
-       background: linear-gradient(#444, #222) repeat scroll 0 0 #222;
-   }
-   
-   .padSmall{padding:10px;}
-   
-   input.ticker{ background:linear-gradient(#fffadf, #fff3a5) repeat scroll 0 0 #fff9df;}
-      
-   label{padding-right: 10px; border-radius: 10px;}
-   label:hover { color: #eee; background-color: #222; }   
-<?php
-    // At page load, hide either the Hist. Volatility filters or the Implied
-    // volatility filters, depending $dataType.
-    echo $dataType == VOLTYPE_IMPL ? '#hvolFS{display:none}' : '#ivolFS{display:none}';
-?>
-   #preview { position: absolute; top: 123px; left: 240px;  }
-   
-<?php
+  <link rel="stylesheet" type="text/css" href="download.css" />
+  <style type="text/css"><?php
+// At page load, hide either the Hist. Volatility filters or the Implied
+// volatility filters, depending $dataType.
+echo $dataType == VOLTYPE_IMPL ? '#hvolFS{display:none}' : '#ivolFS{display:none}';
+
 // Print the CSS for the data table.
 $TDC = new TablesetDefaultCSS();
 $TDC->set_css_tdOdd_value('background-color', null);
@@ -341,8 +250,6 @@ $TDC->set_css_td_value('background-color', '#444');
 $TDC->set_tr_hover_value('background-color', null);
 $TDC->print_css();
 ?>
-
-   fieldset { border-color: goldenrod;}   
   </style>
   <script type="text/javascript">
     /**
@@ -387,7 +294,7 @@ $TDC->print_css();
   ?>
   <img src="barlogo2.png" width="310px" height="100px" /><br>
    <div id="filters">
-     <form action="<?php echo basename(__FILE__); ?>" method="GET">
+     <form action="<?php echo basename($_SERVER['SCRIPT_NAME']); ?>" method="GET">
       
       <fieldset>
        <legend>Data Type</legend>
@@ -459,7 +366,7 @@ $TDC->print_css();
       
       <div class="padSmall">Ticker Symbol: <input class="ticker" type="text" name="ticker" value="<?php echo $ticker;?>"/></div>
       
-      <a href="<?php echo basename(__FILE__); ?>" style="display:inline-block">Reset</a>
+      <a href="<?php echo basename($_SERVER['SCRIPT_NAME']); ?>" style="display:inline-block">Reset</a>
       <input type="submit" value="Preview" name="submit" />
     </form>
   </div>
@@ -614,46 +521,6 @@ function get_hvolmap()
 }
 // end get_hvolmap().
 
-/**
- * Reprint the submitted form as another form with hidden values selected.
- * This makes the downloaded data consistent with whatever data is previewed
- * in the browser.
- * 
- * 
- * @global int $dataType
- * @global array $volTypes
- * @global string $startDate
- * @global string $endDate
- * @global int $moneyness
- * @global string $ticker
- */
-function print_download_form()
-{
-    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker;
-    
-    echo '<div id="downloadForm">'."\n";
-    
-    echo '<form action="'.basename(__FILE__).'" method="GET">'."\n";
-    
-    echo ' <input type="hidden" name="dataType" value="'.$dataType.'" />'."\n";
-    
-    foreach($volTypes as $val)
-    {
-        echo ' <input type="hidden" name="volType[]" value="'.$val.'" />'."\n";
-    }
-    
-    echo ' <input type="hidden" name="startDate" value="'.$startDate.'" />'."\n";
-    echo ' <input type="hidden" name="endDate" value="'.$endDate.'" />'."\n";
-    echo ' <input type="hidden" name="moneyness" value="'.$moneyness.'" />'."\n";
-    echo ' <input type="hidden" name="ticker" value="'.$ticker.'" />'."\n";
-
-    echo ' <input type="submit" name="submit" value="Download" />'."\n";
-    
-    echo "</form>\n";
-    
-    echo "</div>\n";
-}
-// end print_download_form().
 
 /**
  * Create subquery strings for each selected volatility type.
