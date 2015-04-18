@@ -36,7 +36,7 @@ class TablesetDefaultCSS
     protected $css_td_str;
     protected $css_td_real;
     protected $css_footer;
-    protected $tr_hover;
+    protected $css_tr_hover;
 
     public $css_class;
     
@@ -53,7 +53,7 @@ class TablesetDefaultCSS
         $this->css_td = array();
         $this->css_th = array();
         $this->css_footer = array();
-        $this->tr_hover = array();
+        $this->css_tr_hover = array();
                 
         $this->css_table['font-family'] = 'courier new, courier,monospace';
         $this->css_table['font-size'] = '12pt';
@@ -85,7 +85,7 @@ class TablesetDefaultCSS
         
         $this->css_footer['text-align'] = 'right';
         
-        $this->tr_hover['background-color'] = 'white';
+        $this->css_tr_hover['background-color'] = 'white';
         
         $this->css_class = Tableset::DEFAULT_CSS_CLASS;
         
@@ -163,13 +163,13 @@ class TablesetDefaultCSS
     
     public function set_tr_hover_value($key, $val)
     {
-        if( $val == null && isset($this->tr_hover[$key]) )
+        if( $val == null && isset($this->css_tr_hover[$key]) )
         {
-            unset($this->tr_hover[$key]);
+            unset($this->css_tr_hover[$key]);
         }
         else
         {
-            $this->tr_hover[$key] = $val;
+            $this->css_tr_hover[$key] = $val;
         }
     }
     
@@ -284,7 +284,7 @@ class TablesetDefaultCSS
         }
         
         // Print style for a row when the mouse pointer is hovering.
-        if( count($this->tr_hover) > 0 )
+        if( count($this->css_tr_hover) > 0 )
         {
             echo 'table.'.$this->css_class.' tbody tr:hover td {';
             foreach($this->css_td_odd as $key => $val )
