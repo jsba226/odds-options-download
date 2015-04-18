@@ -31,6 +31,7 @@
  * limitations under the License.
  */
 
+// For debugging, show all errors.
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -211,18 +212,12 @@ if( $dataType == VOLTYPE_HIST )
     // SQL query is adapted from query in chart.php Line 351.
     $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date,\n"
     . " eqm.ticker, 'HV' as Indicator, eqp.close_"
-
+    /* Generate the subqueries for each user-specified volatility type. */        
     . vol_sql_generate()
-//    . ", hvol.volType, hvol.vol \n"
 
     . "\nFROM eqprice AS eqp\n"
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
-
-//    . "JOIN eqhvol AS hvol ON hvol.eqId=eqp.eqId\n"
-//    . "  AND hvol.volType IN (".  implode(',', $volTypes).")\n"
-//    . "  AND hvol.date_=eqp.date_\n"
-
     . "WHERE eqm.ticker like '$ticker'\n"
     . "  AND eqp.date_>='$startDate'\n"
     . "  AND eqp.date_<='$endDate'\n"
@@ -233,11 +228,6 @@ else
     // Take the selected values of IV expiry and make them positive.
     // IV expiry values are submitted in the form with negative integers
     // to distinguish them from Historical Volatility expiration values.
-//    $expiry = array();
-//    foreach($volTypes as $val )
-//    {
-//        $expiry[$val * -1] = ($val * -1).'';
-//    }
     
     // @TODO: Don't use date_format in SQL. James said their PHP has more
     // resources than their MySQL to handle processing in PHP.
@@ -248,22 +238,11 @@ else
     $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS PricingDate,\n"
     . "  eqm.ticker AS Ticker, 'IV' as Indicator, '$moneyness' as Moneyness,\n"
     . "  eqp.close_ "
-            
+    /* Generate the subqueries for each user-specified volatility type. */        
     . vol_sql_generate()
-
-//    . "  iv.strike as Moneyness,\n"
-//    . "  FLOOR(iv.expiry) as Term,\n"   // expiry values are float; easier to use int.
-//    . "  iv.ivMid as Volatility,\n"
-    
     . "\nFROM eqprice AS eqp\n"
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
-            
-//    . "JOIN ivcmpr AS iv ON iv.eqId=eqp.eqId\n"
-//    . "  AND iv.strike=$moneyness\n"
-//    . "  AND iv.expiry IN (".implode(',',$expiry).")\n"
-//    . "  AND iv.date_=eqp.date_\n"
-            
     . "WHERE eqm.ticker like '$ticker'\n"
     . "  AND eqp.date_ <= '$endDate'\n"
     . "  AND eqp.date_ >= '$startDate'\n"
@@ -303,6 +282,7 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
     $ResultTable->print_csv_headers();
     $ResultTable->print_table_csv();
     
+    // Stop the script so that only CSV output gets transmitted.
     exit;
 }
 /*
@@ -322,8 +302,6 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
   <style type="text/css">
    body {
        color: white;
-       /*background: linear-gradient(#3c3c3c, #111) repeat scroll 0 0 #111;*/
-       /*background: linear-gradient(#444, #222) repeat scroll 0 0 #222;*/
        background-color: #444;
        font-family: Helvetica,Arial,sans-serif;
        margin: 10px 20px 100px;
@@ -355,21 +333,8 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 ?>
    #preview { position: absolute; top: 123px; left: 240px;  }
    
-/*   #preview table {font-family: courier new, courier,monospace;
-             font-size: 12pt;
-             border-spacing: 0px;
-             border-left: solid 1px #777;
-             border-bottom: solid 1px #777;
-             width: 650px;
-   }
-   #preview th,#preview table caption {font-family: arial; background-color: #333;}
-   
-   #preview td, #preview th { padding: 0px 10px; border-style: solid; border-width: 1px 1px 0px 0px; border-color: #777; }
-   #preview td.int,#preview td.real,#preview td.rowNo { text-align: right;  }
-
-   #preview p.rightDim { color:#aaa; margin:6px 10px 30px; text-align: right; width:69%; }*/
-
 <?php
+// Print the CSS for the data table.
 $TDC = new TablesetDefaultCSS();
 $TDC->set_css_tdOdd_value('background-color', null);
 $TDC->set_css_td_value('background-color', '#444');
@@ -770,8 +735,6 @@ function replace_headers_by_map($map, $startCol, $colPrefix, $Tableset)
         return false;
     }
     
-//    $Tableset = new Tableset();
-
     // Replace column headers with descriptive ones.
     // For each column after closing price.
     for($col=$startCol, $n=$Tableset->get_num_cols(); $col < $n;$col++)
@@ -781,7 +744,6 @@ function replace_headers_by_map($map, $startCol, $colPrefix, $Tableset)
         
         // the volType column name should be "vol" followed by a number.
         // remove "vol" and swap a description for the number.
-//                $cname = substr($this->column_names[$colNo], 3);
         if( isset($map[$cname]))
         {
             $Tableset->set_column_name($col, $map[$cname]);
@@ -790,7 +752,7 @@ function replace_headers_by_map($map, $startCol, $colPrefix, $Tableset)
     // done replacing column headers.
     return true;
 }
-
+// end replace_headers_by_map().
 ?>
  </body>
 </html>
