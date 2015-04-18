@@ -1,0 +1,50 @@
+/*
+Copyright 2015 Fishback Research and Management.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+/* 
+    Created on : Apr 18, 2015, 6:47:07 PM
+    Author     : matt
+*/
+
+body {
+    color: white;
+    background-color: #444;
+    font-family: Helvetica,Arial,sans-serif;
+    margin: 10px 20px 100px;
+}
+ul#errors{
+    color:red;
+    background:white;
+    padding: 20px;
+}
+
+#filters { width: 200px;}
+
+#downloadForm { position:absolute; left:250px; top:123px; z-index:2; }
+
+a { color: white; padding: 0.55em 11px 0.5em;
+    background: linear-gradient(#444, #222) repeat scroll 0 0 #222;
+}
+
+.padSmall{padding:10px;}
+
+input.ticker{ background:linear-gradient(#fffadf, #fff3a5) repeat scroll 0 0 #fff9df;}
+
+label{padding-right: 10px; border-radius: 10px;}
+label:hover { color: #eee; background-color: #222; }   
+
+#preview { position: absolute; top: 123px; left: 240px;  }
+
+fieldset { border-color: goldenrod;}
