@@ -154,26 +154,39 @@ class Tableset
     public function set_data($data )
     {
         $retval = false;
+        
+        // Verify that the data is an array.
         if( is_array($data))
         {
             $rowcnt = count($data);
             
+            // Verify that the data is a 2D array.
             if($rowcnt > 0 && isset($data[0]) && is_array($data[0]))
             {
+                // Set the dimensions in this object.
                 $this->num_cols = count($data[0]);
-                
                 $this->num_rows = $rowcnt;
                 
+                // Store the data in this object.
                 $this->data = $data;
 
+                // For each column, set the column TYPE to be the default value
+                // of string. (Type is used in CSS formatting. Also set the
+                // default column name to be 'Column' + the column number.
+                // These can be overwritten by other methods.
                 for($col=0; $col < $this->num_cols; $col++ )
                 {
                     // Default to string type.
                     $this->column_types[$col] = self::TYPE_STRING;
+                    
+                    $this->column_names[$col] = 'Column'.$col;
                 }
+                // done setting column names and types.
                 
+                // Set the default footer string to show the number of rows.
                 $this->footer = $this->num_rows . ' rows';
                 
+                // The data was good, so we will return true.
                 $retval = true;
             }
             // end if inside array exists.
