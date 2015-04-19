@@ -34,9 +34,11 @@ ul#errors{
 
 #downloadForm { position:absolute; left:250px; top:199px; z-index:2; }
 
-a { color: white; padding: 0.55em 11px 0.5em;
+a.button { color: white; padding: 0.55em 11px 0.5em;
     background: linear-gradient(#444, #222) repeat scroll 0 0 #222;
 }
+
+a { color: white; }
 
 .padSmall{padding:10px;}
 

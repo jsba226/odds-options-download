@@ -76,10 +76,11 @@ date_default_timezone_set(TIMEZONE_DEFAULT);
  * @global string $endDate
  * @global int $moneyness
  * @global string $ticker
+ * @global int $eqID The Equity ID chosen.
  */
 function print_download_form()
 {
-    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker;
+    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker, $eqID;
     
     echo '<div id="downloadForm">'."\n";
     
@@ -101,6 +102,9 @@ function print_download_form()
     if( isset($moneyness))
         echo ' <input type="hidden" name="moneyness" value="'.$moneyness.'" />'."\n";
     
+    if( isset($eqID))
+        echo ' <input type="hidden" name="eqID" value="'.$eqID.'" />'."\n";
+    
     echo ' <input type="hidden" name="ticker" value="'.$ticker.'" />'."\n";
 
     echo ' <input type="submit" name="submit" value="Download" />'."\n";
@@ -113,6 +117,8 @@ function print_download_form()
 
 /**
  * Remove anything that isn't alphanumeric, period, $, /, space, or dash.
+ * Also, make string uppercase.
+ * 
  * This function can be used for use as a callback for filter_input.
  * 
  * Example for filter_input callback on $_GET['ticker']:
@@ -125,7 +131,7 @@ function print_download_form()
 function ticker_sanitize($value)
 {
     // Remove anything that isn't alphanumeric, period, $, /, space, or dash.
-    return preg_replace('@[^a-z0-9\.\$\/ \-!]@i', '', $value);
+    return strtoupper( preg_replace('@[^a-z0-9\.\$\/ \-!]@i', '', $value) );
 }
 
 /**

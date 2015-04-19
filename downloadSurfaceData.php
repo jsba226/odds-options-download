@@ -366,7 +366,7 @@ $TDC->print_css();
       
       <div class="padSmall">Ticker Symbol: <input class="ticker" type="text" name="ticker" value="<?php echo $ticker;?>"/></div>
       
-      <a href="<?php echo basename($_SERVER['SCRIPT_NAME']); ?>" style="display:inline-block">Reset</a>
+      <a class="button" href="<?php echo basename($_SERVER['SCRIPT_NAME']); ?>" style="display:inline-block">Reset</a>
       <input type="submit" value="Preview" name="submit" />
     </form>
   </div>
@@ -389,6 +389,7 @@ if( count($volTypes) > 0 )
     $query_str .= "LIMIT ".MAX_PREVIEW_ROWS;
     
     echo '<div id="preview">'."\n";
+    echo '<h1>Surface Data</h1>';
     if( $dataType == VOLTYPE_HIST )
     {
         $ResultTable = new MysqlResultTable();
