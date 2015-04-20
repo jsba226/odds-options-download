@@ -80,7 +80,8 @@ date_default_timezone_set(TIMEZONE_DEFAULT);
  */
 function print_download_form()
 {
-    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker, $eqID;
+    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker,
+            $eqID, $expDate, $currentDate;
     
     echo '<div id="downloadForm">'."\n";
     
@@ -96,8 +97,17 @@ function print_download_form()
         }
     }
     
-    echo ' <input type="hidden" name="startDate" value="'.$startDate.'" />'."\n";
-    echo ' <input type="hidden" name="endDate" value="'.$endDate.'" />'."\n";
+    if( isset($startDate))
+        echo ' <input type="hidden" name="startDate" value="'.$startDate.'" />'."\n";
+    
+    if( isset($endDate))
+        echo ' <input type="hidden" name="endDate" value="'.$endDate.'" />'."\n";
+    
+    if( isset($currentDate))
+        echo ' <input type="hidden" name="currentDate" value="'.$currentDate.'" />'."\n";
+    
+    if( isset($expDate))
+        echo ' <input type="hidden" name="expDate" value="'.$expDate.'" />'."\n";
     
     if( isset($moneyness))
         echo ' <input type="hidden" name="moneyness" value="'.$moneyness.'" />'."\n";

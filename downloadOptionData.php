@@ -1,16 +1,7 @@
 <?php
-/**
- * downloadIssuerData.php
- * 
+/* 
  * Author: Matthew Denninghoff
- * Date: 4/18/2015
- * 
- * Web form for choosing "Issuer Data" to download, which is data from
- * the `eqprice` and `eqmaster` tables.
- * 
- * 
- * Requires PHP version >= 5.2 for INPUT filtering.
- * 
+ * Created: 4/19/15
  * 
  * Copyright 2015 Fishback Research and Management.
  *
@@ -31,13 +22,12 @@
 // and other downloader scripts. Also attempts database connection.
 require './inc.download.php';
 
-const VOLATILITY_DIGITS_SHOW = 12;
-
 // Start the session to setup cookies.
 session_start();
 
 // A stack of error messages to display to the user.
 $errors = array();
+
 
 ////
 ////
@@ -47,13 +37,13 @@ $errors = array();
 ////
 ////
 
-// Start Date, default to 30 days ago. Overwritten if user submitted good value.
-$startDate = date(DATE_YYYYMMDD,  time() - 30*86400 );
-parse_date_entry(INPUT_GET, 'startDate', $startDate, $errors);
+// Current Date, default to now. Overwritten if user submitted good value.
+$currentDate = date(DATE_YYYYMMDD);
+parse_date_entry(INPUT_GET, 'currentDate', $currentDate, $errors);
 
-// End Date, default to now. Overwritten if user submitted good value.
-$endDate = date(DATE_YYYYMMDD);
-parse_date_entry(INPUT_GET, 'endDate', $endDate, $errors);
+// Expiration Date, default 7 days from now.
+$expDate = date(DATE_YYYYMMDD, time() + 7*86400 );
+parse_date_entry(INPUT_GET, 'expDate', $expDate, $errors);
 
 // Fetch the equity ID from _GET.
 $eqID = null;
@@ -97,8 +87,8 @@ if( isset($_GET['ticker']))
                 header('Location: '.$_SERVER['SCRIPT_NAME']
                         .'?eqID='.$row[1]
                         .'&ticker='.$ticker
-                        .'&startDate='.$startDate
-                        .'&endDate='.$endDate
+                        .'&currentDate='.$currentDate
+                        .'&expDate='.$expDate
                         .'&submit=Preview');
                 // Anything after header redirect isn't seen by the user, so exit.
                 exit;
@@ -120,8 +110,8 @@ if( isset($_GET['ticker']))
                     $matching_ticker_string .= '<li><a href="'.basename($_SERVER['SCRIPT_NAME'])
                             .'?eqID='.$row[1]
                             .'&ticker='.$row[0]
-                            .'&startDate='.$startDate
-                            .'&endDate='.$endDate
+                            .'&currentDate='.$currentDate
+                            .'&expDate='.$expDate
                             .'&submit=Preview'
                             .'">'.$row[2].'</a></li>';
                 }
@@ -140,24 +130,42 @@ if( isset($_GET['ticker']))
 }
 // done handling ticker symbol being chosen.
 
+// Default lowStrike to 0.
+$lowStrike = 0;
+if( isset($_GET['lowStrike']))
+{
+    $lowStrike = (int) $_GET['lowStrike'];
+}
+
+// Default highStrike to 1000.
+$highStrike = 1000;
+if( isset($_GET['highStrike']))
+{
+    $highStrike = (int) $_GET['highStrike'];
+}
+
 ////
 ////
 //// done error checking and parsing _GET requests.
 ////
 ////
 
-
 /*
- * Make a query string based on the user inputs, if any.
+ * Make a query string based on the user inputs.
  */
 $query_str = <<<ENDQSTR
-SELECT eqp.date_, eqm.ticker, eqm.eqId, eqm.issuer, eqp.open_, eqp.high,
-    eqp.low, eqp.close_, eqp.volume, eqp.bid, eqp.ask, eqp.totRtn
-FROM eqprice eqp
-LEFT JOIN eqmaster eqm ON eqp.eqid=eqm.eqid
-    AND eqp.date_ between eqm.startDate AND eqm.endDate
-WHERE eqm.eqId = '$eqID'
-  AND eqp.date_ >= '$startDate' AND eqp.date_ <= '$endDate'
+SELECT op.optId, oc.putCall, oc.strike, oc.expDate, oc.opraRoot, op.date_,
+  iv.ivBid, iv.ivAsk, iv.ivMid, iv.delta, iv.gamma, iv.theta, iv.vega,
+  iv.rho, op.volume, op.bid, op.ask, op.openInt, oc.corpAction
+FROM optprice AS op LEFT JOIN optcontract AS oc ON oc.optId=op.optId
+  AND op.date_ between oc.startDate AND oc.endDate
+LEFT JOIN eqmaster AS eqm ON eqm.eqId=oc.eqId
+  AND op.date_ between eqm.startDate and eqm.endDate
+LEFT JOIN ivlisted AS iv ON iv.optId=op.optId AND iv.date_=op.date_
+WHERE eqm.eqID='$eqID'
+  AND op.date_='$currentDate'
+  AND oc.expDate='$expDate'
+  AND oc.strike between '$lowStrike' AND '$highStrike'
 ENDQSTR;
 
 // Set a limit on the result size. CSV downloads have different limit than
@@ -180,29 +188,29 @@ if( $eqID != null )
     $ResultTable->executeQuery($query_str);
 
 $colNo=0;   // colNo avoids renumbering if order changes.
-$ResultTable->set_column_name($colNo++, 'Pricing Date');
-$ResultTable->set_column_name($colNo++, 'Ticker');
-$ResultTable->set_column_name($colNo++, 'ID');
-$ResultTable->set_column_name($colNo++, 'Issuer Name');
-$ResultTable->set_column_name($colNo++, 'Open');
-$ResultTable->set_column_name($colNo++, 'High');
-$ResultTable->set_column_name($colNo++, 'Low');
-$ResultTable->set_column_name($colNo++, 'Closing Price');
-$ResultTable->set_column_name($colNo++, 'Volume');
-$ResultTable->set_column_name($colNo++, 'Bid');
-$ResultTable->set_column_name($colNo++, 'Ask');
-$ResultTable->set_column_name($colNo++, 'Total Return');
+$ResultTable->set_column_name($colNo++, 'OptionID');
+$ResultTable->set_column_name($colNo++, 'Put/Call');
+$ResultTable->set_column_name($colNo++, 'Strike');
+$ResultTable->set_column_name($colNo++, 'Exp. Date');
+$ResultTable->set_column_name($colNo++, 'Opra Root');
+$ResultTable->set_column_name($colNo++, 'Date');
 
 
-// Format the date for each row.
+// Format the dates for each row.
 for($row=0; $row < $ResultTable->get_num_rows(); $row++)
 {
-    $val = $ResultTable->get_value_at($row, 0);
+    // Format the expDate.
+    $val = $ResultTable->get_value_at($row, 3);
     $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 0, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 3, $DT->format(DATE_YYYYMMDD) );
+    
+    // Format the currentDate.
+    $val = $ResultTable->get_value_at($row, 5);
+    $ts = strtotime($val);
+    $DT = new DateTime($val);
+    $ResultTable->set_value_at($row, 5, $DT->format(DATE_YYYYMMDD) );
 }
-
 
 /*
  * Check if we're printing CSV data.
@@ -210,7 +218,7 @@ for($row=0; $row < $ResultTable->get_num_rows(); $row++)
  */
 if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 {
-    $ResultTable->csv_filename = 'issuerdata.csv';
+    $ResultTable->csv_filename = 'optionchaindata.csv';
     $ResultTable->print_csv_headers();
     $ResultTable->print_table_csv();
     
@@ -238,6 +246,8 @@ $TDC = new TablesetDefaultCSS();
 $TDC->set_css_tdOdd_value('background-color', null);
 $TDC->set_css_td_value('background-color', '#444');
 $TDC->set_tr_hover_value('background-color', null);
+$TDC->set_css_footer_value('text-align', 'left');
+
 $TDC->print_css();
 ?></style>
  </head>
@@ -259,11 +269,19 @@ $TDC->print_css();
      <form action="<?php echo basename($_SERVER['SCRIPT_NAME']); ?>" method="GET">
       
       <fieldset style="position:relative;">
-       <legend>Date Range</legend>
-       Start <input type="text" name="startDate" value="<?php echo $startDate ?>" style="position:absolute; right:10px; width: 100px;" />
+       <legend>Dates</legend>
+       Current <input type="text" name="currentDate" value="<?php echo $currentDate ?>" style="position:absolute; right:10px; width: 100px;" />
        <hr/>
-       End <input type="text" name="endDate" value="<?php echo $endDate;?>" style="position:absolute; right:10px; width: 100px;" />
+       Expires <input type="text" name="expDate" value="<?php echo $expDate;?>" style="position:absolute; right:10px; width: 100px;" />
       </fieldset>
+      
+      <fieldset style="position: relative;">
+       <legend>Strike</legend>
+       Low <input type="text" name="lowStrike" value="<?php echo $lowStrike; ?>" style="position:absolute; right: 10px; width:100px;" />
+       <hr/>
+       High <input type="text" name="highStrike" value="<?php echo $highStrike; ?>" style="position:absolute; right: 10px; width:100px;" />
+      </fieldset>
+      
       <?php
       // If the user chose an eqID, then put a hidden form element to avoid
       // re-choosing it whenever date range changes but ticker does not.
@@ -306,7 +324,7 @@ if( $eqID != null )
     print_download_form();
 
     echo '<div id="preview" style="width: 1500px;">'."\n";
-    echo '<h1>Issuer Data</h1>';
+    echo '<h1>Option Data</h1>';
 
 
     $ResultTable->caption = 'Preview';
