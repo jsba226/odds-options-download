@@ -76,7 +76,9 @@ date_default_timezone_set(TIMEZONE_DEFAULT);
  * @global string $endDate
  * @global int $moneyness
  * @global string $ticker
- * @global int $eqID The Equity ID chosen.
+ * @global int $eqID   The Equity ID chosen.
+ * @global string $expDate  Used in Option download page.
+ * @global string $currentDate Used in Option download page.
  */
 function print_download_form()
 {
@@ -186,7 +188,7 @@ function parse_date_entry($type, $keyName,  &$date, &$errors )
         }
         else
         {
-            $errors[] = 'The endDate submitted must be in the format YYYY-mm-dd.';
+            $errors[] = 'The '.$keyName.' submitted must be in the format YYYY-mm-dd.';
         }
     }
     // done parsing endDate.
