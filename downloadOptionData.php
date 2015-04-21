@@ -154,9 +154,10 @@ if( isset($_GET['highStrike']))
  * Make a query string based on the user inputs.
  */
 $query_str = <<<ENDQSTR
-SELECT op.optId, oc.putCall, oc.strike, oc.expDate, oc.opraRoot, op.date_,
-  iv.ivBid, iv.ivAsk, iv.ivMid, iv.delta, iv.gamma, iv.theta, iv.vega,
-  iv.rho, op.volume, op.bid, op.ask, op.openInt, oc.corpAction
+SELECT op.date_, oc.opraRoot, oc.putCall, oc.strike, oc.expDate, 
+  op.bid, op.ask, iv.ivBid, iv.ivMid, iv.ivAsk,
+  iv.delta, iv.gamma, iv.theta, iv.vega, iv.rho,
+  op.volume, op.openInt, oc.corpAction
 FROM optprice AS op LEFT JOIN optcontract AS oc ON oc.optId=op.optId
   AND op.date_ between oc.startDate AND oc.endDate
 LEFT JOIN eqmaster AS eqm ON eqm.eqId=oc.eqId
@@ -165,7 +166,8 @@ LEFT JOIN ivlisted AS iv ON iv.optId=op.optId AND iv.date_=op.date_
 WHERE eqm.eqID='$eqID'
   AND op.date_='$currentDate'
   AND oc.expDate='$expDate'
-  AND oc.strike between '$lowStrike' AND '$highStrike'
+  AND oc.strike between '$lowStrike' AND '$highStrike' 
+ORDER BY oc.opraRoot, oc.putCall, oc.strike
 ENDQSTR;
 
 // Set a limit on the result size. CSV downloads have different limit than
@@ -176,7 +178,10 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 }
 else
 {
-    $query_str .= " LIMIT " . MAX_PREVIEW_ROWS;
+    // Don said increase the output to more than 100 rows. So I'm guessing 500
+    // is good. He didn't say if that was just for optionData or all.
+//    $query_str .= " LIMIT " . MAX_PREVIEW_ROWS;
+    $query_str .= " LIMIT 500 ";
 }
 
 //
@@ -188,28 +193,28 @@ if( $eqID != null )
     $ResultTable->executeQuery($query_str);
 
 $colNo=0;   // colNo avoids renumbering if order changes.
-$ResultTable->set_column_name($colNo++, 'OptionID');
+$ResultTable->set_column_name($colNo++, 'Date');
+$ResultTable->set_column_name($colNo++, 'Opra Root');
 $ResultTable->set_column_name($colNo++, 'Put/Call');
 $ResultTable->set_column_name($colNo++, 'Strike');
 $ResultTable->set_column_name($colNo++, 'Exp. Date');
-$ResultTable->set_column_name($colNo++, 'Opra Root');
-$ResultTable->set_column_name($colNo++, 'Date');
+
 
 
 // Format the dates for each row.
 for($row=0; $row < $ResultTable->get_num_rows(); $row++)
 {
-    // Format the expDate.
-    $val = $ResultTable->get_value_at($row, 3);
+    // Format the date.
+    $val = $ResultTable->get_value_at($row, 0);
     $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 3, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 0, $DT->format(DATE_YYYYMMDD) );
     
-    // Format the currentDate.
-    $val = $ResultTable->get_value_at($row, 5);
+    // Format the expDate.
+    $val = $ResultTable->get_value_at($row, 4);
     $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 5, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 4, $DT->format(DATE_YYYYMMDD) );
 }
 
 /*
