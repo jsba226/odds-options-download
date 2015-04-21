@@ -45,7 +45,7 @@ const VOLATILITY_DIGITS_SHOW = 12;
 // The order of the elements in this array determine which order the filters
 // are displayed; e.g. array(95,90,85) shows 95, then 90, then 85.
 // (Arrays cannot be constants, so this is a variable. MD.)
-$MONEYNESS_VALUES = array(105,95,90,85,80);
+$MONEYNESS_VALUES = array(50,60,70,75,80,85,90,95,100,105,110,115,120,125,130,140,150);
 
 // Start the session to setup cookies.
 session_start();
@@ -79,8 +79,8 @@ if( isset($_GET['volType']))
         {
             $volTypes[] = (int)$val;
         }
-        // Or the volType is Implied volatility from 1 to 6 months.
-        else if( $dataType == VOLTYPE_IMPL && (int)$val >= -6 && (int)$val < 0 )
+        // Or the volType is a negative number.
+        else if( $dataType == VOLTYPE_IMPL && (int)$val < 0 )
         {
             $volTypes[] = (int)$val;
         }
@@ -128,13 +128,19 @@ if( isset($_GET['ticker']))
 $hvolmap = get_hvolmap();
 
 // Create the mapping of Implied Volatility DB result values to string names.
+// This array is used to generate the list of implied volatility checkboxes.
+// It is also used to make descriptive column headers.
 $ivolmap = array(
     '1' => '1 Month',
     '2' => '2 Months',
     '3' => '3 Months',
     '4' => '4 Months',
     '5' => '5 Months',
-    '6' => '6 Months' );
+    '6' => '6 Months',
+    '9' => '9 Months',
+    '12' => '12 Months',
+    '18' => '18 Months',
+    '24' => '24 Months' );
 
 /*
  * Decide which query to use for both the preview and the CSV download.
@@ -324,35 +330,44 @@ $TDC->print_css();
       <fieldset>
        <legend>Implied Volatility</legend>
        <?php
-       // Output the 1 month first, not using a loop; its label isn't plural.
-        echo '<label><input type="checkbox" name="volType[]" value="-1"';
-        echo in_array(-1, $volTypes) ? ' checked="checked"' : '';
-        echo '>IV 1 Month</label><br/>'."\n";
-        // Output 2-6 months, using plural form of "months".
-       for($i=-2; $i >= -6; $i--)
+       echo '<ul class="inputlist">';
+       
+       foreach( $ivolmap as $key => $val )
        {
-           echo '<label><input type="checkbox" name="volType[]" value="'.$i.'"';
-           echo in_array($i, $volTypes) ? ' checked="checked"' : '';
-           echo '>IV '.($i*-1).' Months</label><br/>'."\n";
+           // The submitted IV values are negative numbers, so we search
+           // for a negative value in the volTypes array.
+           $negated = $key * -1;
+           
+           echo '<li><label><input type="checkbox" name="volType[]" value="'.$negated.'"';
+           echo in_array($negated, $volTypes) ? ' checked="checked"' : '';
+           echo '>'.$val.'</label></li>'."\n";
        }
+       
+//       // Output the 1 month first, not using a loop; its label isn't plural.
+//        echo '<label><input type="checkbox" name="volType[]" value="-1"';
+//        echo in_array(-1, $volTypes) ? ' checked="checked"' : '';
+//        echo '>IV 1 Month</label><br/>'."\n";
+//        // Output 2-6 months, using plural form of "months".
+//       for($i=-2; $i >= -6; $i--)
+//       {
+//           
+//       }
+//       
+       echo "</ul>\n";
        ?>
       </fieldset>
        <fieldset>
         <legend>Moneyness</legend>
         <?php
-        
-        // Display normal moneyness value of 100.
-        echo '<label><input type="radio" name="moneyness" value="100"';
-        echo $moneyness == 100 ? ' checked="checked"' : '';
-        echo '>100%</label>'."\n";
-        
-        // Display other moneyness values.
+        // Display all moneyness values from the array.
+        echo '<ul class="inputlist">';
         foreach( $MONEYNESS_VALUES as $val )
         {
-            echo '<br><label><input type="radio" name="moneyness" value="'.$val.'"';
+            echo '<li><label><input type="radio" name="moneyness" value="'.$val.'"';
             echo $moneyness == $val ? ' checked="checked"' : '';
-            echo '>'.$val.'%</label>'."\n";
+            echo '>'.$val.'%</label></li>'."\n";
         }
+        echo "</ul>\n";
         ?>
        </fieldset>
       </div>
@@ -436,7 +451,7 @@ if( count($volTypes) > 0 )
     }
     
     // Print the raw query for debugging.
-    echo '<pre>'.$query_str.'</pre>';
+//    echo '<pre>'.$query_str.'</pre>';
     
     echo "</div>\n";
 }

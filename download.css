@@ -50,3 +50,5 @@ label:hover { color: #eee; background-color: #222; }
 #preview { position: absolute; top: 123px; left: 240px;  }
 
 fieldset { border-color: goldenrod;}
+
+ul.inputlist {margin:0px;padding:0px;list-style-type:none;}
