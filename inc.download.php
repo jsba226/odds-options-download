@@ -87,7 +87,7 @@ session_start();
 //
 // Setup the download tracker to prevent too many downloads.
 //
-$DLTracker = new DLTracker(DLTRACKER_NAME, 2);
+$DLTracker = new DLTracker(DLTRACKER_NAME, DOWNLOAD_FREQ);
 $DLTracker->clearOld();
 
 
