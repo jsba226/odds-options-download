@@ -1,9 +1,23 @@
 <?php
 /*
- * filename: downloadChecker.php
+ * Filename: downloadChecker.php
  * Date:
- * Author:
+ * Author: Hassan Alomran
  * Description:
+ * 
+ * Copyright 2015 Fishback Research and Management.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  * 
  */
 
@@ -19,7 +33,7 @@ session_start();
 
 // Connect to the database or die. MD.
 // Commented out for testing non-database functions. MD.
-//require('./dbconnect.php');
+require('./dbconnect.php');
 
 
 // Check if the user has specified a download and is permitted to download
@@ -109,17 +123,22 @@ else
 function user_may_download($userID)
 {
     // @TODO: make sure userID doesn't have SQL injection attacks.
+  //  $userID = preg_replace('\'', '\\', $userID);
     
     // Sample query. MD.
-//    $result = mysql_query("SELECT COUNT(*) FROM downloadTracker WHERE userId ='$userID' AND download_timestamp > NOW() - ".DOWNLOAD_PERIOD_SEC);
-//    $row = mysql_fetch_row($result);
-//    
-//    if( $row[0] < DOWNLOAD_FREQ )
-//    {
-//        return true;
-//    }
-    
-    // @TODO: Otherwise, flag the user's account.
+    $query_string = "SELECT COUNT(*) FROM downloadTracker WHERE UserID = '$userID' AND ClickedTime > NOW() - ".DOWNLOAD_PERIOD_SEC;
+    $result = mysql_query($query_string) or die (mysql_error());
 
+    $row = mysql_fetch_row($result);
+		echo '<p>$query_string: ' . $query_string . "</p>";
+		echo '<p>$row: ' . $row[0] . "</p>";
+    if( $row[0] < DOWNLOAD_FREQ )
+    {
+        $result = mysql_query("INSERT INTO downloadTracker VALUES ('$userID',now())");
+        return true;
+    }
+
+    // @TODO: Otherwise, flag the user's account.
+		$result = mysql_query("UPATE flag SET flagged = TRUE WHERE UserID = '$userID'");
     return false;
 }
