@@ -222,9 +222,15 @@ for($row=0; $row < $ResultTable->get_num_rows(); $row++)
  */
 if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 {
-    // First see if the user has exceeded his/her download limit.
-    // Allow download, if the user is not over limit.
-    if( $DLTracker->underLimit() )
+    // First see if the user's account has been flagged.
+    // Prevent downloads if so.
+    if( $DLTracker->isAccountFlagged() )
+    {
+        $errors[] = DLWARNING_OVERLIMIT;
+    }
+    // For unflagged accounts, see if the user has exceeded his/her download
+    // limit. Allow download, if the user is not over limit.
+    elseif( $DLTracker->underLimit() )
     {
 
         $ResultTable->csv_filename = 'optionchaindata.csv';
@@ -237,11 +243,11 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
         // Stop the script so that only CSV output gets transmitted in the download.
         exit;
     }
-    // User has exceeded limit, so add warning to the error stack.
+    // User has exceeded limit, so add warning to the error stack, and flag account.
     else
     {
+        $DLTracker->flagAccount();
         $errors[] = DLWARNING_OVERLIMIT;
-//        $errors[] = print_r($_SESSION[DLTRACKER_NAME],true);  // debugging output.
     }
     // done checking download limit.
 }

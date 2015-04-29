@@ -35,6 +35,11 @@ class DLTracker
     const TIMEPERIOD_SEC = 60;
     
     /**
+     * Name to use in SESSION for flagging an account.
+     */
+    const FLAGNAME = '_flagged';
+    
+    /**
      * The name of the SESSION variable under which this instance of DLTracker
      * reads and writes data.
      *
@@ -67,6 +72,12 @@ class DLTracker
         if(! isset($_SESSION[$this->trackerName]) || !is_array($_SESSION[$this->trackerName]))
         {
             $_SESSION[$this->trackerName] = array();
+        }
+        
+        // Set up the variable that shows if an account is flagged.
+        if( ! isset($_SESSION[$this->trackerName.self::FLAGNAME]))
+        {
+            $_SESSION[$this->trackerName.self::FLAGNAME] = 0;
         }
     }
     // end constructor.
@@ -121,6 +132,28 @@ class DLTracker
         $_SESSION[$this->trackerName][] = time();
     }
     // end recordNew().
+    
+    /**
+     * Mark in the session data that an account is flagged.
+     * Downloads should be forbidden when this happens.
+     * 
+     * @TODO: Record account flag in database in future.
+     */
+    public function flagAccount()
+    {
+        $_SESSION[$this->trackerName.self::FLAGNAME] = 1;
+    }
+    
+    /**
+     * Returns true if the currently logged-in user's account has been flagged
+     * for downloading too much.
+     * 
+     * @return boolean
+     */
+    public function isAccountFlagged()
+    {
+        return ($_SESSION[$this->trackerName.self::FLAGNAME] != 0);
+    }
     
 }
 // end class DLTracker.
