@@ -28,7 +28,7 @@
  * limitations under the License.
  */
 
-// For debugging, show all errors.
+// When debugging, show all errors.
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -52,16 +52,44 @@ const MAX_PREVIEW_ROWS = 100;
 // The limit on the number of database rows to display in a download.
 const MAX_DOWNLOAD_ROWS = 5000;
 
+//
+// Constants for the download-tracker.  
+//
+
+// Limit to how many downloads are permitted per time period.
+const DOWNLOAD_FREQ = 50;
+
+// The SESSION name under which download tracker stores its counts.
+const DLTRACKER_NAME = 'DLTracker';
+const DLWARNING_OVERLIMIT = 'Sorry. You have exceed the reasonable use limit for downloads.';
+
+//
 // Connect to the database or die. MD.
+//
 require('./dbconnect.php');
 
-// Library for displaying nice tables.
+// A library for displaying nice tables.
 require('./class-Tableset.php');
 require('./class-TablesetDefaultCSS.php');
 require('./class-MysqlResultTable.php');
 
+// The download tracker class.
+require('./class-DLTracker.php');
+
 // (Certain installations of PHP print warnings if default timezone is not set.)
 date_default_timezone_set(TIMEZONE_DEFAULT);
+
+//
+// Start the session to setup cookies.
+//
+session_start();
+
+//
+// Setup the download tracker to prevent too many downloads.
+//
+$DLTracker = new DLTracker(DLTRACKER_NAME, 2);
+$DLTracker->clearOld();
+
 
 
 /**

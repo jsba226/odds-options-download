@@ -19,11 +19,10 @@
  */
 
 // Include a file containing functions and constants shared between this script
-// and other downloader scripts. Also attempts database connection.
+// and other downloader scripts. Attempts database connection. Calls
+//session_start(). Creates a download tracker object in $DLTracker.
 require './inc.download.php';
 
-// Start the session to setup cookies.
-session_start();
 
 // A stack of error messages to display to the user.
 $errors = array();
@@ -223,12 +222,28 @@ for($row=0; $row < $ResultTable->get_num_rows(); $row++)
  */
 if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 {
-    $ResultTable->csv_filename = 'optionchaindata.csv';
-    $ResultTable->print_csv_headers();
-    $ResultTable->print_table_csv();
-    
-    // Stop the script so that only CSV output gets transmitted in the download.
-    exit;
+    // First see if the user has exceeded his/her download limit.
+    // Allow download, if the user is not over limit.
+    if( $DLTracker->underLimit() )
+    {
+
+        $ResultTable->csv_filename = 'optionchaindata.csv';
+        $ResultTable->print_csv_headers();
+        $ResultTable->print_table_csv();
+        
+        // Record this download in the tracker.
+        $DLTracker->recordNew();
+
+        // Stop the script so that only CSV output gets transmitted in the download.
+        exit;
+    }
+    // User has exceeded limit, so add warning to the error stack.
+    else
+    {
+        $errors[] = DLWARNING_OVERLIMIT;
+//        $errors[] = print_r($_SESSION[DLTRACKER_NAME],true);  // debugging output.
+    }
+    // done checking download limit.
 }
 /*
  * done printing CSV data.

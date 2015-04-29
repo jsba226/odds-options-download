@@ -32,7 +32,8 @@
  */
 
 // Include a file containing functions and constants shared between this script
-// and other downloader scripts. Also attempts database connection.
+// and other downloader scripts. Attempts database connection. Calls
+//session_start(). Creates a download tracker object in $DLTracker.
 require './inc.download.php';
 
 // Volatility types, used in html form and parsing input.
@@ -46,9 +47,6 @@ const VOLATILITY_DIGITS_SHOW = 12;
 // are displayed; e.g. array(95,90,85) shows 95, then 90, then 85.
 // (Arrays cannot be constants, so this is a variable. MD.)
 $MONEYNESS_VALUES = array(50,60,70,75,80,85,90,95,100,105,110,115,120,125,130,140,150);
-
-// Start the session to setup cookies.
-session_start();
 
 
 // A stack of error messages to display to the user.
@@ -200,34 +198,49 @@ else
  */
 if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
 {
-    $query_str .= "LIMIT ".MAX_DOWNLOAD_ROWS;
-    
-    $ResultTable = new MysqlResultTable();
-    $ResultTable->executeQuery($query_str);
-    
-    if( $dataType == VOLTYPE_HIST )
+    // First see if the user has exceeded his/her download limit.
+    // Allow download, if the user is not over limit.
+    if( $DLTracker->underLimit() )
     {
-        $ResultTable->set_column_name(0, 'Pricing Date');
-        $ResultTable->set_column_name(1, 'Ticker');
-        $ResultTable->set_column_name(2, 'Indicator');
-        $ResultTable->set_column_name(3, 'Closing Price');
+        $query_str .= "LIMIT ".MAX_DOWNLOAD_ROWS;
+
+        $ResultTable = new MysqlResultTable();
+        $ResultTable->executeQuery($query_str);
+
+        if( $dataType == VOLTYPE_HIST )
+        {
+            $ResultTable->set_column_name(0, 'Pricing Date');
+            $ResultTable->set_column_name(1, 'Ticker');
+            $ResultTable->set_column_name(2, 'Indicator');
+            $ResultTable->set_column_name(3, 'Closing Price');
+
+            replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
+
+        }
+        else
+        {
+            $ResultTable->set_column_name(0, 'Pricing Date');
+            $ResultTable->set_column_name(4, 'Closing Price');
+
+            replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
+        }
+
+        $ResultTable->print_csv_headers();
+        $ResultTable->print_table_csv();
+
+        // Record this download in the tracker.
+        $DLTracker->recordNew();
         
-        replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
-        
+        // Stop the script so that only CSV output gets transmitted.
+        exit;
     }
+    // User has exceeded limit, so add warning to the error stack.
     else
     {
-        $ResultTable->set_column_name(0, 'Pricing Date');
-        $ResultTable->set_column_name(4, 'Closing Price');
-        
-        replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
+        $errors[] = DLWARNING_OVERLIMIT;
+//        $errors[] = print_r($_SESSION[DLTRACKER_NAME],true);  // debugging output.
     }
-    
-    $ResultTable->print_csv_headers();
-    $ResultTable->print_table_csv();
-    
-    // Stop the script so that only CSV output gets transmitted.
-    exit;
+    // done checking download limit.
 }
 /*
  * done printing CSV data.
