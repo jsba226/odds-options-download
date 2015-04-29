@@ -61,7 +61,7 @@ const DOWNLOAD_FREQ = 50;
 
 // The SESSION name under which download tracker stores its counts.
 const DLTRACKER_NAME = 'DLTracker';
-const DLWARNING_OVERLIMIT = 'Sorry. You have exceed the reasonable use limit for downloads.';
+const DLWARNING_OVERLIMIT = 'Sorry. You have exceeded the reasonable use limit for downloads.';
 
 //
 // Connect to the database or die. MD.
