@@ -36,13 +36,48 @@ $errors = array();
 ////
 ////
 
-// Current Date, default to now. Overwritten if user submitted good value.
-$currentDate = date(DATE_YYYYMMDD);
-parse_date_entry(INPUT_GET, 'currentDate', $currentDate, $errors);
 
-// Expiration Date, default 7 days from now.
-$expDate = date(DATE_YYYYMMDD, time() + 7*86400 );
-parse_date_entry(INPUT_GET, 'expDate', $expDate, $errors);
+// Start Date: fetch from _GET or default to monday of this week.
+$DT_startDate;
+try
+{
+    $DT_startDate = parse_dateEntry(INPUT_GET, 'startDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_startDate )
+    {
+        // Default to monday of this week.
+        $DT_startDate = new DateTime("monday this week");
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Use default value.
+    $DT_startDate = new DateTime();
+    $DT_startDate = new DateTime("monday this week");
+}
+
+// Expire Date, fetch from _GET or default to friday of this week.
+$DT_expDate;
+try
+{
+    $DT_expDate = parse_dateEntry(INPUT_GET, 'expDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_expDate)
+    {
+        $DT_expDate = new DateTime("friday this week");
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Use default value.
+    $DT_expDate = new DateTime("friday this week");
+}
 
 // Fetch the equity ID from _GET.
 $eqID = null;
@@ -86,8 +121,8 @@ if( isset($_GET['ticker']))
                 header('Location: '.$_SERVER['SCRIPT_NAME']
                         .'?eqID='.$row[1]
                         .'&ticker='.$ticker
-                        .'&currentDate='.$currentDate
-                        .'&expDate='.$expDate
+                        .'&startDate='.$DT_startDate->format(DATE_MMDDYYYY_JS)
+                        .'&expDate='.$DT_expDate->format(DATE_MMDDYYYY_JS)
                         .'&submit=Preview');
                 // Anything after header redirect isn't seen by the user, so exit.
                 exit;
@@ -109,8 +144,8 @@ if( isset($_GET['ticker']))
                     $matching_ticker_string .= '<li><a href="'.basename($_SERVER['SCRIPT_NAME'])
                             .'?eqID='.$row[1]
                             .'&ticker='.$row[0]
-                            .'&currentDate='.$currentDate
-                            .'&expDate='.$expDate
+                            .'&startDate='.$DT_startDate->format(DATE_DATE_MMDDYYYY_JS)
+                            .'&expDate='.$DT_expDate->format(DATE_MMDDYYYY_JS)
                             .'&submit=Preview'
                             .'">'.$row[2].'</a></li>';
                 }
@@ -152,6 +187,8 @@ if( isset($_GET['highStrike']))
 /*
  * Make a query string based on the user inputs.
  */
+$startDate_sql = $DT_startDate->format(DATE_YYYYMMDD);
+$expDate_sql = $DT_expDate->format(DATE_YYYYMMDD);
 $query_str = <<<ENDQSTR
 SELECT op.date_, oc.opraRoot, oc.putCall, oc.strike, oc.expDate, 
   op.bid, op.ask, iv.ivBid, iv.ivMid, iv.ivAsk,
@@ -163,8 +200,8 @@ LEFT JOIN eqmaster AS eqm ON eqm.eqId=oc.eqId
   AND op.date_ between eqm.startDate and eqm.endDate
 LEFT JOIN ivlisted AS iv ON iv.optId=op.optId AND iv.date_=op.date_
 WHERE eqm.eqID='$eqID'
-  AND op.date_='$currentDate'
-  AND oc.expDate='$expDate'
+  AND op.date_='$startDate_sql'
+  AND oc.expDate='$expDate_sql'
   AND oc.strike between '$lowStrike' AND '$highStrike' 
 ORDER BY oc.opraRoot, oc.putCall, oc.strike
 ENDQSTR;
@@ -207,13 +244,13 @@ for($row=0; $row < $ResultTable->get_num_rows(); $row++)
     $val = $ResultTable->get_value_at($row, 0);
     $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 0, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 0, $DT->format(DATE_MMDDYYYY_JS) );
     
     // Format the expDate.
     $val = $ResultTable->get_value_at($row, 4);
     $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 4, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 4, $DT->format(DATE_MMDDYYYY_JS) );
 }
 
 /*
@@ -276,6 +313,34 @@ $TDC->set_css_footer_value('text-align', 'left');
 
 $TDC->print_css();
 ?></style>
+<!--
+  Start DatePicker includes.
+  Code is from https://jqueryui.com/datepicker/#date-range
+  -->
+  <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+  <script src="//code.jquery.com/jquery-1.10.2.js"></script>
+  <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+  <script type="text/javascript">
+  $(function() {
+    $( "#startDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#expDate" ).datepicker( "option", "minDate", selectedDate );
+      }
+    });
+    $( "#expDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_expDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#startDate" ).datepicker( "option", "maxDate", selectedDate );
+      }
+    });
+  });
+  </script>
+  <!-- end DatePicker includes. -->
  </head>
  <body>
   <?php
@@ -296,9 +361,9 @@ $TDC->print_css();
       
       <fieldset style="position:relative;">
        <legend>Dates</legend>
-       Current <input type="text" name="currentDate" value="<?php echo $currentDate ?>" style="position:absolute; right:10px; width: 100px;" />
+       Current <input type="text" id="startDate" name="startDate" value="<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>" style="position:absolute; right:10px; width: 100px;" />
        <hr/>
-       Expires <input type="text" name="expDate" value="<?php echo $expDate;?>" style="position:absolute; right:10px; width: 100px;" />
+       Expires <input type="text" id="expDate" name="expDate" value="<?php echo $DT_expDate->format(DATE_MMDDYYYY_JS);?>" style="position:absolute; right:10px; width: 100px;" />
       </fieldset>
       
       <fieldset style="position: relative;">
@@ -354,19 +419,14 @@ if( $eqID != null )
 
 
     $ResultTable->caption = 'Preview';
-    $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
+    $ResultTable->footer = 'Showing up to 500 rows.';
     $ResultTable->set_column_width(3, '15%');
 
-    // Set column formats for the volatility columns: specify the number of digits to show.
-    //for($col=4, $n=$ResultTable->get_num_cols(); $col < $n; $col++)
-    //{
-    //    $ResultTable->set_column_format($col, '%0.'.VOLATILITY_DIGITS_SHOW.'f');
-    //}
 
     $ResultTable->print_table_html();
 
     // Print the raw query for debugging.
-    echo '<pre>'.$query_str.'</pre>';
+//    echo '<pre>'.$query_str.'</pre>';
 
     echo "</div>\n";
 }

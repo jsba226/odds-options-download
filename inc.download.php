@@ -35,6 +35,8 @@ ini_set('display_errors', 1);
 // Date format to use in this script when printing timestamps as formatted dates.
 // YYYY-mm-dd: example: 2015-04-02 means April 2, 2015.
 const DATE_YYYYMMDD = 'Y-m-d';
+const DATE_MMDDYYYY = 'm-d-Y';
+const DATE_MMDDYYYY_JS = 'm/d/Y';   // for javascript.
 
 // Default timezone to use in this script. Set default timezone to avoid PHP
 // warnings output to browser (or log file).
@@ -42,6 +44,7 @@ const TIMEZONE_DEFAULT = 'America/New_York';
 
 // Regular Expression used to verify format of dates submitted via GET requests.
 const PREG_DATE_YYYYMMDD = '/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/';
+const PREG_DATE_MMDDYYYY = '/^[0-9]{2}-[0-9]{2}-[0-9]{4}$/';
 
 // Format dates from the database with this style.
 const SQL_DATE_FORMAT = '%Y-%m-%d';
@@ -100,8 +103,8 @@ $DLTracker->clearOld();
  * 
  * @global int $dataType
  * @global array $volTypes
- * @global string $startDate
- * @global string $endDate
+ * @global string $DT_startDate
+ * @global string $DT_endDate
  * @global int $moneyness
  * @global string $ticker
  * @global int $eqID   The Equity ID chosen.
@@ -110,7 +113,7 @@ $DLTracker->clearOld();
  */
 function print_download_form()
 {
-    global $dataType, $volTypes, $startDate, $endDate, $moneyness, $ticker,
+    global $dataType, $volTypes, $DT_startDate, $DT_endDate, $moneyness, $ticker,
             $eqID, $expDate, $currentDate;
     
     echo '<div id="downloadForm">'."\n";
@@ -127,16 +130,16 @@ function print_download_form()
         }
     }
     
-    if( isset($startDate))
-        echo ' <input type="hidden" name="startDate" value="'.$startDate.'" />'."\n";
+    if( isset($DT_startDate) && $DT_startDate )
+        echo ' <input type="hidden" name="startDate" value="'.$DT_startDate->format(DATE_MMDDYYYY_JS).'" />'."\n";
     
-    if( isset($endDate))
-        echo ' <input type="hidden" name="endDate" value="'.$endDate.'" />'."\n";
+    if( isset($DT_endDate) && $DT_endDate )
+        echo ' <input type="hidden" name="endDate" value="'.$DT_endDate->format(DATE_MMDDYYYY_JS).'" />'."\n";
     
-    if( isset($currentDate))
+    if( isset($currentDate) && $currentDate )
         echo ' <input type="hidden" name="currentDate" value="'.$currentDate.'" />'."\n";
     
-    if( isset($expDate))
+    if( isset($expDate) && $expDate )
         echo ' <input type="hidden" name="expDate" value="'.$expDate.'" />'."\n";
     
     if( isset($moneyness))
@@ -194,8 +197,11 @@ function ticker_sanitize($value)
  * 
  * @param string[] $errors A reference to an array of strings. The date value
  * was invalid, then $errors gets a new entry describing the error.
+ * 
+ * @param string $pregstr Regular expression string to compare the date value
+ *  against.
  */
-function parse_date_entry($type, $keyName,  &$date, &$errors )
+function parse_date_entry($type, $keyName,  &$date, &$errors, $pregstr = PREG_DATE_YYYYMMDD )
 {
     // Get either _GET[$keyName] or _POST[$keyName], depending on $type.
     $val = filter_input($type, $keyName);
@@ -204,7 +210,7 @@ function parse_date_entry($type, $keyName,  &$date, &$errors )
     if( $val !== null )
     {
         // See if the date string matches a certain format.
-        if(preg_match(PREG_DATE_YYYYMMDD, $val))
+        if(preg_match($pregstr, $val))
         {
             // Only use the date if it was a real date.
             if(strtotime($val) !== false)
@@ -222,3 +228,20 @@ function parse_date_entry($type, $keyName,  &$date, &$errors )
     // done parsing endDate.
 }
 // end parse_date_entry().
+
+function parse_dateEntry($type, $keyName )
+{
+    $DateTime = null;
+    
+    // Get either _GET[$keyName] or _POST[$keyName], depending on $type.
+    $val = filter_input($type, $keyName);
+    
+    // See if the specified _GET or _POST value existed.
+    if( $val !== null )
+    {
+        $DateTime = new DateTime($val);
+    }
+    // done parsing endDate.
+    
+    return $DateTime;
+}

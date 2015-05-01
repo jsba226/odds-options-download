@@ -45,13 +45,51 @@ $errors = array();
 ////
 ////
 
-// Start Date, default to 30 days ago. Overwritten if user submitted good value.
-$startDate = date(DATE_YYYYMMDD,  time() - 30*86400 );
-parse_date_entry(INPUT_GET, 'startDate', $startDate, $errors);
+// Interval object used to subtract 30days from a dateTime object.
+$Interval30Days = new DateInterval('P30D');
 
-// End Date, default to now. Overwritten if user submitted good value.
-$endDate = date(DATE_YYYYMMDD);
-parse_date_entry(INPUT_GET, 'endDate', $endDate, $errors);
+// Start Date: fetch from _GET or default to 30 days ago..
+$DT_startDate;
+try
+{
+    $DT_startDate = parse_dateEntry(INPUT_GET, 'startDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_startDate )
+    {
+        // Default to 30 days ago.
+        $DT_startDate = new DateTime();
+        $DT_startDate->sub($Interval30Days);
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Default to 30 days ago.
+    $DT_startDate = new DateTime();
+    $DT_startDate->sub($Interval30Days);
+}
+
+// End Date, fetch from _GET or default to today.
+$DT_endDate;
+try
+{
+    $DT_endDate = parse_dateEntry(INPUT_GET, 'endDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_endDate)
+    {
+        $DT_endDate = new DateTime();
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Default to now.
+    $DT_endDate = new DateTime();
+}
 
 // Fetch the equity ID from _GET.
 $eqID = null;
@@ -95,8 +133,8 @@ if( isset($_GET['ticker']))
                 header('Location: '.$_SERVER['SCRIPT_NAME']
                         .'?eqID='.$row[1]
                         .'&ticker='.$ticker
-                        .'&startDate='.$startDate
-                        .'&endDate='.$endDate
+                        .'&startDate='.$DT_startDate->format(DATE_YYYYMMDD)
+                        .'&endDate='.$DT_endDate->format(DATE_YYYYMMDD)
                         .'&submit=Preview');
                 // Anything after header redirect isn't seen by the user, so exit.
                 exit;
@@ -118,8 +156,8 @@ if( isset($_GET['ticker']))
                     $matching_ticker_string .= '<li><a href="'.basename($_SERVER['SCRIPT_NAME'])
                             .'?eqID='.$row[1]
                             .'&ticker='.$row[0]
-                            .'&startDate='.$startDate
-                            .'&endDate='.$endDate
+                            .'&startDate='.$DT_startDate->format(DATE_YYYYMMDD)
+                            .'&endDate='.$DT_endDate->format(DATE_YYYYMMDD)
                             .'&submit=Preview'
                             .'">'.$row[2].'</a></li>';
                 }
@@ -148,6 +186,10 @@ if( isset($_GET['ticker']))
 /*
  * Make a query string based on the user inputs, if any.
  */
+// SQL dates are in the format Y-m-d or DATE_ISO8601.
+$startDate_sql = $DT_startDate->format(DATE_YYYYMMDD);
+$endDate_sql = $DT_endDate->format(DATE_YYYYMMDD);
+
 $query_str = <<<ENDQSTR
 SELECT eqp.date_, eqm.ticker, eqm.eqId, eqm.issuer, eqp.open_, eqp.high,
     eqp.low, eqp.close_, eqp.volume, eqp.bid, eqp.ask, eqp.totRtn
@@ -155,7 +197,7 @@ FROM eqprice eqp
 LEFT JOIN eqmaster eqm ON eqp.eqid=eqm.eqid
     AND eqp.date_ between eqm.startDate AND eqm.endDate
 WHERE eqm.eqId = '$eqID'
-  AND eqp.date_ >= '$startDate' AND eqp.date_ <= '$endDate'
+  AND eqp.date_ >= '$startDate_sql' AND eqp.date_ <= '$endDate_sql'
 ENDQSTR;
 
 // Set a limit on the result size. CSV downloads have different limit than
@@ -178,14 +220,14 @@ if( $eqID != null )
     $ResultTable->executeQuery($query_str);
 
 $colNo=0;   // colNo avoids renumbering if order changes.
-$ResultTable->set_column_name($colNo++, 'Pricing Date');
+$ResultTable->set_column_name($colNo++, 'Date');
 $ResultTable->set_column_name($colNo++, 'Ticker');
 $ResultTable->set_column_name($colNo++, 'ID');
 $ResultTable->set_column_name($colNo++, 'Issuer Name');
 $ResultTable->set_column_name($colNo++, 'Open');
 $ResultTable->set_column_name($colNo++, 'High');
 $ResultTable->set_column_name($colNo++, 'Low');
-$ResultTable->set_column_name($colNo++, 'Closing Price');
+$ResultTable->set_column_name($colNo++, 'Close');
 $ResultTable->set_column_name($colNo++, 'Volume');
 $ResultTable->set_column_name($colNo++, 'Bid');
 $ResultTable->set_column_name($colNo++, 'Ask');
@@ -196,9 +238,8 @@ $ResultTable->set_column_name($colNo++, 'Total Return');
 for($row=0; $row < $ResultTable->get_num_rows(); $row++)
 {
     $val = $ResultTable->get_value_at($row, 0);
-    $ts = strtotime($val);
     $DT = new DateTime($val);
-    $ResultTable->set_value_at($row, 0, $DT->format(DATE_YYYYMMDD) );
+    $ResultTable->set_value_at($row, 0, $DT->format(DATE_MMDDYYYY_JS) );
 }
 
 
@@ -246,12 +287,41 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
  */
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
  <head>
   <title>OptionApps</title>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
   <link rel="stylesheet" type="text/css" href="download.css" />
+  <!--
+  Start DatePicker includes.
+  Code is from https://jqueryui.com/datepicker/#date-range
+  -->
+  <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+  <script src="//code.jquery.com/jquery-1.10.2.js"></script>
+  <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+  <script type="text/javascript">
+  $(function() {
+    $( "#startDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#endDate" ).datepicker( "option", "minDate", selectedDate );
+      }
+    });
+    $( "#endDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_endDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#startDate" ).datepicker( "option", "maxDate", selectedDate );
+      }
+    });
+  });
+  </script>
+  <!-- end DatePicker includes. -->
+  
   <style type="text/css"><?php
 // Print the CSS for the data table.
 $TDC = new TablesetDefaultCSS();
@@ -280,9 +350,9 @@ $TDC->print_css();
       
       <fieldset style="position:relative;">
        <legend>Date Range</legend>
-       Start <input type="text" name="startDate" value="<?php echo $startDate ?>" style="position:absolute; right:10px; width: 100px;" />
+       Start <input type="text" id="startDate" name="startDate" value="<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>" style="position:absolute; right:10px; width: 100px;" />
        <hr/>
-       End <input type="text" name="endDate" value="<?php echo $endDate;?>" style="position:absolute; right:10px; width: 100px;" />
+       End <input type="text" id="endDate" name="endDate" value="<?php echo $DT_endDate->format(DATE_MMDDYYYY_JS);?>" style="position:absolute; right:10px; width: 100px;" />
       </fieldset>
       <?php
       // If the user chose an eqID, then put a hidden form element to avoid
@@ -342,7 +412,7 @@ if( $eqID != null )
     $ResultTable->print_table_html();
 
     // Print the raw query for debugging.
-    echo '<pre>'.$query_str.'</pre>';
+//    echo '<pre>'.$query_str.'</pre>';
 
     echo "</div>\n";
 }

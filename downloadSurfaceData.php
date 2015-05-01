@@ -87,14 +87,51 @@ if( isset($_GET['volType']))
 }
 // done getting the volatility type.
 
+// Interval object used to subtract 30days from a dateTime object.
+$Interval30Days = new DateInterval('P30D');
 
-// Start Date, default to 30 days ago. Overwritten if user submitted good value.
-$startDate = date(DATE_YYYYMMDD,  time() - 30*86400 );
-parse_date_entry(INPUT_GET, 'startDate', $startDate, $errors);
+// Start Date: fetch from _GET or default to 30 days ago..
+$DT_startDate;
+try
+{
+    $DT_startDate = parse_dateEntry(INPUT_GET, 'startDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_startDate )
+    {
+        // Default to 30 days ago.
+        $DT_startDate = new DateTime();
+        $DT_startDate->sub($Interval30Days);
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Default to 30 days ago.
+    $DT_startDate = new DateTime();
+    $DT_startDate->sub($Interval30Days);
+}
 
-// End Date, default to now. Overwritten if user submitted good value.
-$endDate = date(DATE_YYYYMMDD);
-parse_date_entry(INPUT_GET, 'endDate', $endDate, $errors);
+// End Date, fetch from _GET or default to today.
+$DT_endDate;
+try
+{
+    $DT_endDate = parse_dateEntry(INPUT_GET, 'endDate');
+    
+    // If the DateTime object wasn't created, then use a default.
+    if( ! $DT_endDate)
+    {
+        $DT_endDate = new DateTime();
+    }
+}
+catch(Exception $e )
+{
+    $errors[] = $e->getMessage();
+    
+    // Default to now.
+    $DT_endDate = new DateTime();
+}
 
 // Default moneyness/strike to 100. Only allow values in $MONEYNESS_VALUES.
 $moneyness = 100;
@@ -144,15 +181,19 @@ $ivolmap = array(
  * Decide which query to use for both the preview and the CSV download.
  */
 $query_str;
+$startDate_sql = $DT_startDate->format(DATE_YYYYMMDD);
+$endDate_sql = $DT_endDate->format(DATE_YYYYMMDD);
 if( $dataType == VOLTYPE_HIST )
 {
+
+    
     // @TODO: Don't use date_format in SQL. James said their PHP has more
     // resources than their MySQL to handle processing in PHP.
     
     // @TODO: Don't use subqueries for hvol data.
 
     // SQL query is adapted from query in chart.php Line 351.
-    $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS eqp_date,\n"
+    $query_str="SELECT eqp.date_ AS eqp_date,\n"
     . " eqm.ticker, 'HV' as Indicator, eqp.close_"
     /* Generate the subqueries for each user-specified volatility type. */        
     . vol_sql_generate()
@@ -161,8 +202,8 @@ if( $dataType == VOLTYPE_HIST )
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
     . "WHERE eqm.ticker like '$ticker'\n"
-    . "  AND eqp.date_>='$startDate'\n"
-    . "  AND eqp.date_<='$endDate'\n"
+    . "  AND eqp.date_>='$startDate_sql'\n"
+    . "  AND eqp.date_<='$endDate_sql'\n"
     . "ORDER BY eqp.date_ " ;
 }
 else
@@ -177,7 +218,7 @@ else
     // @TODO: Don't use subqueries for ivol data.
     
     // SQL query adapted from chart.php line 349.
-    $query_str="SELECT date_format(eqp.date_, '".SQL_DATE_FORMAT."') AS PricingDate,\n"
+    $query_str="SELECT eqp.date_ AS PricingDate,\n"
     . "  eqm.ticker AS Ticker, 'IV' as Indicator, '$moneyness' as Moneyness,\n"
     . "  eqp.close_ "
     /* Generate the subqueries for each user-specified volatility type. */        
@@ -186,8 +227,8 @@ else
     . "LEFT JOIN eqmaster AS eqm ON eqm.eqId=eqp.eqId\n"
     . "  AND eqp.date_ between eqm.startDate AND eqm.endDate\n"
     . "WHERE eqm.ticker like '$ticker'\n"
-    . "  AND eqp.date_ <= '$endDate'\n"
-    . "  AND eqp.date_ >= '$startDate'\n"
+    . "  AND eqp.date_ <= '$endDate_sql'\n"
+    . "  AND eqp.date_ >= '$startDate_sql'\n"
     . "ORDER BY eqp.date_ ";
 }
 // done deciding which query to use.
@@ -213,24 +254,36 @@ if( isset($_GET['submit']) && $_GET['submit'] == 'Download')
         $ResultTable = new MysqlResultTable();
         $ResultTable->executeQuery($query_str);
 
+        // Set column names depending on the volatility type.
         if( $dataType == VOLTYPE_HIST )
         {
-            $ResultTable->set_column_name(0, 'Pricing Date');
+            $ResultTable->set_column_name(0, 'Date');
             $ResultTable->set_column_name(1, 'Ticker');
             $ResultTable->set_column_name(2, 'Indicator');
-            $ResultTable->set_column_name(3, 'Closing Price');
+            $ResultTable->set_column_name(3, 'Close');
 
             replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
 
         }
         else
         {
-            $ResultTable->set_column_name(0, 'Pricing Date');
-            $ResultTable->set_column_name(4, 'Closing Price');
+            $ResultTable->set_column_name(0, 'Date');
+            $ResultTable->set_column_name(4, 'Close');
 
             replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
         }
+        
+        // Format the date of the first cell in each row.
+        for($row=0; $row < $ResultTable->get_num_rows(); $row++)
+        {
+            $val = $ResultTable->get_value_at($row, 0);
+            $DT = new DateTime($val);
+            $ResultTable->set_value_at($row, 0, $DT->format(DATE_MMDDYYYY_JS) );
+        }
 
+        $ResultTable->csv_filename = 'surfacedata.csv';
+        
+        // Write the output to the browser.
         $ResultTable->print_csv_headers();
         $ResultTable->print_table_csv();
 
@@ -303,6 +356,34 @@ $TDC->print_css();
         }
     }
   </script>
+  <!--
+  Start DatePicker includes.
+  Code is from https://jqueryui.com/datepicker/#date-range
+  -->
+  <link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+  <script src="//code.jquery.com/jquery-1.10.2.js"></script>
+  <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+  <script type="text/javascript">
+  $(function() {
+    $( "#startDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#endDate" ).datepicker( "option", "minDate", selectedDate );
+      }
+    });
+    $( "#endDate" ).datepicker({
+      defaultDate: new Date('<?php echo $DT_endDate->format(DATE_MMDDYYYY_JS); ?>'),
+      changeMonth: true,
+      numberOfMonths: 3,
+      onClose: function( selectedDate ) {
+        $( "#startDate" ).datepicker( "option", "maxDate", selectedDate );
+      }
+    });
+  });
+  </script>
+  <!-- end DatePicker includes. -->
  </head>
  <body>
   <?php
@@ -362,16 +443,6 @@ $TDC->print_css();
            echo '>'.$val.'</label></li>'."\n";
        }
        
-//       // Output the 1 month first, not using a loop; its label isn't plural.
-//        echo '<label><input type="checkbox" name="volType[]" value="-1"';
-//        echo in_array(-1, $volTypes) ? ' checked="checked"' : '';
-//        echo '>IV 1 Month</label><br/>'."\n";
-//        // Output 2-6 months, using plural form of "months".
-//       for($i=-2; $i >= -6; $i--)
-//       {
-//           
-//       }
-//       
        echo "</ul>\n";
        ?>
       </fieldset>
@@ -393,9 +464,9 @@ $TDC->print_css();
 
       <fieldset style="position:relative;">
        <legend>Date Range</legend>
-       Start <input type="text" name="startDate" value="<?php echo $startDate ?>" style="position:absolute; right:10px; width: 100px;" />
+       Start <input type="text" id="startDate" name="startDate" value="<?php echo $DT_startDate->format(DATE_MMDDYYYY_JS); ?>" style="position:absolute; right:10px; width: 100px;" />
        <hr/>
-       End <input type="text" name="endDate" value="<?php echo $endDate;?>" style="position:absolute; right:10px; width: 100px;" />
+       End <input type="text" id="endDate" name="endDate" value="<?php echo $DT_endDate->format(DATE_MMDDYYYY_JS); ?>" style="position:absolute; right:10px; width: 100px;" />
       </fieldset>
       
       <div class="padSmall">Ticker Symbol: <input class="ticker" type="text" name="ticker" value="<?php echo $ticker;?>"/></div>
@@ -422,20 +493,24 @@ if( count($volTypes) > 0 )
         
     $query_str .= "LIMIT ".MAX_PREVIEW_ROWS;
     
+    // Create the Table object and run the query.
+    $ResultTable = new MysqlResultTable();
+    $ResultTable->executeQuery($query_str);
+
+    // Set the table caption and footer.
+    $ResultTable->caption = 'Preview';
+    $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
+    
     echo '<div id="preview">'."\n";
     echo '<h1>Surface Data</h1>';
+    
+    // Set column headers depending on the volatility type.
     if( $dataType == VOLTYPE_HIST )
     {
-        $ResultTable = new MysqlResultTable();
-        $ResultTable->executeQuery($query_str);
-
-        $ResultTable->caption = 'Preview';
-        $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
-        
-        $ResultTable->set_column_name(0, 'Pricing Date');
+        $ResultTable->set_column_name(0, 'Date');
         $ResultTable->set_column_name(1, 'Ticker');
         $ResultTable->set_column_name(2, 'Indicator');
-        $ResultTable->set_column_name(3, 'Closing Price');
+        $ResultTable->set_column_name(3, 'Close');
         
         replace_headers_by_map($hvolmap, 4, "vol", $ResultTable);
         
@@ -443,20 +518,12 @@ if( count($volTypes) > 0 )
         for($col=4, $n=$ResultTable->get_num_cols(); $col < $n; $col++)
         {
             $ResultTable->set_column_format($col, '%0.'.VOLATILITY_DIGITS_SHOW.'f');
-        }
-        
-        $ResultTable->print_table_html();
+        }    
     }
     else
     {
-        $ResultTable = new MysqlResultTable();
-        $ResultTable->executeQuery($query_str);
-        
-        $ResultTable->caption = 'Preview';
-        $ResultTable->footer = 'Showing up to '.MAX_PREVIEW_ROWS.' rows.';
-        
-        $ResultTable->set_column_name(0, 'Pricing Date');
-        $ResultTable->set_column_name(4, 'Closing Price');
+        $ResultTable->set_column_name(0, 'Date');
+        $ResultTable->set_column_name(4, 'Close');
 
         replace_headers_by_map($ivolmap, 5, "vol", $ResultTable);
         
@@ -465,9 +532,18 @@ if( count($volTypes) > 0 )
         {
             $ResultTable->set_column_format($col, '%0.'.VOLATILITY_DIGITS_SHOW.'f');
         }
-        
-        $ResultTable->print_table_html();
     }
+    // done setting column headers.
+    
+    // Format the date of the first cell in each row.
+    for($row=0; $row < $ResultTable->get_num_rows(); $row++)
+    {
+        $val = $ResultTable->get_value_at($row, 0);
+        $DT = new DateTime($val);
+        $ResultTable->set_value_at($row, 0, $DT->format(DATE_MMDDYYYY_JS) );
+    }
+    
+    $ResultTable->print_table_html();
     
     // Print the raw query for debugging.
 //    echo '<pre>'.$query_str.'</pre>';
