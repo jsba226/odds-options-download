@@ -229,6 +229,12 @@ function parse_date_entry($type, $keyName,  &$date, &$errors, $pregstr = PREG_DA
 }
 // end parse_date_entry().
 
+/**
+ * Description: Create a DateTime object from user input or use null.
+Purpose: To create a DateTime object that can later be used to generate strings for displaying formatted dates to the user. The object also generates date strings in the ISO8601 format for use in a SQL database query.
+Input: An integer specifying which PHP input method to search; e.g. INPUT_GET or INPUT_POST. And a string identifying which _GET or _POST key to fetch the string value from.
+Output: Returns null if no input data existed or if the date string could not be parsed into a real date. Returns a new DateTime object otherwise.
+ */
 function parse_dateEntry($type, $keyName )
 {
     $DateTime = null;
